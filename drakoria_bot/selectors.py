@@ -35,6 +35,8 @@ DIFF_CONFIRM = ".hcd-confirm"                   # "Entrar na caçada"
 HUNT_EXIT = "button.cp-btn.danger"              # title "Retornar para Thais"
 HUNT_TRACKER_ROW = ".bestiary-tracker-row"      # title "Troll: 4 de 250 kills · faltam 246..."
 HUNT_DIFFICULTY = ".world-hunt-difficulty-control"
+HUNT_DETAILS = "button.cp-btn[title='Detalhes das criaturas']"   # abre .creature-window.is-hunt com o NOME da caça
+HUNT_DETAILS_WINDOW = ".creature-window.is-hunt"
 
 # house / treino
 HOUSE_STOP = ".house-hud-btn.danger"            # "Parar" (title "Parar treino"); parado vira "Treinar" (.primary)
@@ -70,6 +72,9 @@ PREY_TOOL = ".drk-prey-tool"
 PREY_REROLL_TEXT = "Trocar lista"
 PREY_OPTION = ".drk-prey-option"
 PREY_RELEASE_TEXT = "Liberar o espaço"
+PREY_ASK = ".drk-prey-ask"                      # confirmacao 'Trocar a lista do espaço N por X gold?'
+PREY_ASK_PAY = ".drk-prey-ask button.green"     # 'Pagar 3.000 gold'
+PREY_ASK_CANCEL = ".drk-prey-ask button:not(.green)"   # 'Cancelar'
 
 # login (pagina inicial do site)
 LOGIN_OPEN_TEXT = r"^(Entrar|Já tenho conta)$"

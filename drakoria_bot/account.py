@@ -204,9 +204,10 @@ class Account:
         return self.state
 
     # ------------------------------------------------------------ util
-    def _js_click(self, selector):
-        return self.page.evaluate("s => { const e = document.querySelector(s); if (!e) return false; e.click(); return true; }",
-                                  selector)
+    def _js_click(self, selector, visible=False):
+        return self.page.evaluate("""([s, visible]) => { const e = [...document.querySelectorAll(s)]
+                 .find(e => !visible || e.getBoundingClientRect().width > 0);
+                 if (!e) return false; e.click(); return true; }""", [selector, visible])
 
     def _click_text(self, scope, pattern):
         """Clica o 1o botao VISIVEL dentro de 'scope' cujo texto casa com o regex."""
@@ -232,10 +233,11 @@ class Account:
 
     def dismiss_popups(self):
         """Relatorio offline / avisos: clica so' botoes inofensivos (Coletar e continuar, OK, Continuar...)."""
-        if self._js_click(S.OFFLINE_COLLECT):
+        if self._js_click(S.OFFLINE_COLLECT, visible=True):
             return "relatório offline coletado"
         if self._click_text(".modal", S.DISMISS_TEXT):
             return "aviso fechado"
+        self.close_windows()            # janela comum que ficou aberta (detalhes, tasks...): so' fecha
         return None
 
     def reload(self):
@@ -292,6 +294,18 @@ class Account:
         if not self._wait(lambda: S.SCENE_HUNTING in (self.page.evaluate(
                 "s => (document.querySelector(s) || {}).className || ''", S.SCENE) or ""), 12):
             raise RuntimeError("nao entrou na caçada")
+
+    def current_hunt(self):
+        """Nome da caça atual pela janela 'Detalhes das criaturas' (o rastreador pode estar mostrando as tasks)."""
+        if not self._js_click(S.HUNT_DETAILS):
+            raise RuntimeError("botao 'Detalhes das criaturas' nao encontrado")
+        try:
+            if not self._wait(lambda: self.page.locator(S.HUNT_DETAILS_WINDOW).first.is_visible(), 5):
+                raise RuntimeError("janela de detalhes da caça nao abriu")
+            head = self.page.locator(S.HUNT_DETAILS_WINDOW + " .tibia-window-brand").first.inner_text()
+            return head.split("\n")[0].strip()
+        finally:
+            self.close_windows()
 
     def stop_training(self):
         if not self._js_click(S.HOUSE_STOP):
@@ -428,7 +442,8 @@ class Account:
         if free.count() and not free.first.is_checked():
             free.first.check()
 
-    def prey_reroll(self, index):
+    def prey_reroll(self, index, max_price=0):
+        """Troca a lista. Se o jogo pedir confirmacao com preço, so' paga se o preço for <= max_price; senao cancela."""
         slot = self._slot(index)
         names = "l => l.map(b => b.title).join('|')"
         before = slot.locator(S.PREY_CREATURE).evaluate_all(names)
@@ -437,7 +452,13 @@ class Account:
             raise RuntimeError("Trocar lista desabilitado")
         tool.click()
         time.sleep(0.6)
-        self._click_text(".modal", r"^(Confirmar|Trocar|Sim)$")      # se o jogo pedir confirmacao do preço
+        ask = self.page.locator(S.PREY_ASK)
+        if ask.count() and ask.first.is_visible():
+            price = prey_rules.parse_price(ask.first.inner_text()) or 0
+            if price > max_price:
+                self.page.locator(S.PREY_ASK_CANCEL).first.click()
+                raise RuntimeError(f"troca da lista custa {price} de ouro (limite {max_price}): cancelado")
+            self.page.locator(S.PREY_ASK_PAY).first.click()
         if not self._wait(lambda: slot.locator(S.PREY_CREATURE).evaluate_all(names) != before, 6):
             raise RuntimeError("a lista da Prey nao mudou")
 

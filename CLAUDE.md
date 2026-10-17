@@ -199,3 +199,15 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
 - Bestiary: abates/meta vem do rastreador da caça (title 'X: a de N kills') -> memory.json 'bestiary'; completa -> proxima.
 - deliver_task: clica o botao da task ativa que nao e' Cancelar (+ confirma se pedir). AINDA NAO VALIDADO ao vivo.
 - Ao vivo 17/10 ~02:10: party lv 19 caçando; goal_hunt com a task de Rotworm ativa -> 'Rotworms'.
+
+## v1.2.1 - ao vivo 17/10 ~20:05
+- O rastreador da caça mostra as TASKS ativas (`.task-tracker`, 'TASKS 1/2 · Lump Of Dirt 0/250') quando ha task: some o
+  rastreador de bestiary -> identify() falha. Caça atual por `button.cp-btn[title='Detalhes das criaturas']` ->
+  `.creature-window.is-hunt` (titulo = nome da caça), lido 1x por caçada (Engine.hunt_known). Monstros sao so' canvas.
+- VALIDADO: party em 'Ghoul e Skeleton' com task de Rotworm ativa -> bot leu a caça, trocou DIRETO da tela de caça pra
+  Rotworms (Escolher Hunt funciona caçando). Prey so' e' escolhida quando ja esta na caça desejada (Engine._settled).
+- Troca de lista PAGA: botao 'Trocar lista 3k gold' (title 'Trocar a lista: 3.000 gold (a troca grátis volta à
+  meia-noite)') -> caixa `.drk-prey-ask` 'Trocar a lista do espaço 2 por 3.000 gold?' com Cancelar / `button.green`
+  'Pagar 3.000 gold'. O bot so' paga se o preço <= o que decidiu; senao Cancela. parse_reroll: preço antes de 'grátis'.
+- Slot que acabou: 'Escolha a nova criatura: o bônus guardado continua' (bonus fica pra proxima criatura).
+- Janela comum esquecida aberta (detalhes) virava 'aviso' em loop: agora dismiss so' clica visivel e fecha o resto.

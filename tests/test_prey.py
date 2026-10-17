@@ -18,6 +18,9 @@ class PreyRulesTest(unittest.TestCase):
         self.assertEqual(P.parse_reroll("", "Trocar lista 2,5k gold")["gold"], 2500)
         self.assertTrue(P.parse_reroll("", "Trocar lista 1 carta")["cards"])
         self.assertEqual(P.parse_reroll("", "Trocar lista")["gold"], None)       # preço desconhecido: nao paga
+        paid = P.parse_reroll("Trocar a lista: 3.000 gold (a troca grátis volta à meia-noite)", "Trocar lista 3k gold")
+        self.assertEqual((paid["free"], paid["gold"]), (False, 3000))                # visto ao vivo 17/10
+        self.assertEqual(P.parse_price("Trocar a lista do espaço 2 por 3.000 gold? Cancelar Pagar 3.000 gold"), 3000)
 
     def test_gold(self):
         self.assertEqual(parse_gold("500"), 500)

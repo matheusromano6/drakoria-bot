@@ -59,6 +59,10 @@ class FakeAccount:
         self.st.phase = "hunting"
         self.st.tracker = list(next(h["creatures"] for h in HUNTS if h["name"] == hunt))
 
+    def current_hunt(self):
+        self._call("current_hunt")
+        return getattr(self, "hunt_name", None) or "Troll Cave"
+
     def stop_training(self):
         self._call("stop_training")
         self.st.phase = "house_idle"
@@ -76,7 +80,7 @@ class FakeAccount:
         slot = self.prey[index]
         slot.update(state="active", creature=creature, options=[])
 
-    def prey_reroll(self, index):
+    def prey_reroll(self, index, max_price=0):
         self._call("prey_reroll", index)
         slot = self.prey[index]
         slot["options"] = self.prey_lists.pop(0)
@@ -405,6 +409,28 @@ class GoalsEngineTest(unittest.TestCase):
         for _ in range(3):
             eng.tick(acc)
         self.assertEqual(acc.calls[-1], ("start_hunt", "Troll Cave", "Normal"))
+
+
+class CurrentHuntTest(unittest.TestCase):
+    def test_reads_hunt_name_when_tracker_shows_tasks(self):
+        acc = FakeAccount(phase="hunting", tracker=[])        # rastreador mostrando tasks: sem criaturas
+        acc.hunt_name = "Troll Cave"
+        eng, clock, logs = make(acc, hunt="Rotworms")
+        eng.tick(acc)       # loot (e le a caça 1 vez)
+        eng.tick(acc)
+        eng.tick(acc)
+        self.assertEqual(names(acc).count("current_hunt"), 1)
+        self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Rotworms"))
+
+
+class PreyWaitsHuntTest(unittest.TestCase):
+    def test_no_prey_while_about_to_switch(self):
+        acc = FakeAccount(phase="hunting", tracker=TROLLS)
+        acc.prey = [prey_slot(["Troll"])]
+        eng, clock, logs = make(acc, hunt="Rotworms", prey={"enabled": True})
+        eng.tick(acc)
+        eng.tick(acc)
+        self.assertNotIn("read_prey", names(acc))
 
 
 if __name__ == "__main__":

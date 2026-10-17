@@ -27,6 +27,7 @@ class Engine:
         self.last_ok = {}               # acao -> ultimo sucesso
         self.phase_since = (None, 0)    # (fase, desde)
         self.mismatch = 0
+        self.hunt_known = None          # caça atual quando o rastreador nao identifica (lida no 'Detalhes')
         self.best = None                # (level, caça) da 'Melhor escolha' do jogo
         self.prey_spent = {}            # ouro gasto trocando lista da Prey hoje (sem memory.json)
         self.snapshot = {"state": None, "hunt": None, "target": None, "phase": "-", "action": "", "prey": [], "tasks": [], "goal": ""}
@@ -119,6 +120,16 @@ class Engine:
                 self.log(f"estado: {self.phase_since[0]} -> {st.phase}")
             self.phase_since = (st.phase, now)
         current = H.identify(st.tracker, self.hunts) if st.phase == "hunting" else None
+        if st.phase != "hunting":
+            self.hunt_known = None
+        elif current:
+            self.hunt_known = current
+        elif self.hunt_known:
+            current = self.hunt_known
+        elif not st.modals:
+            name = self._do("ler caça atual", acc.current_hunt)
+            if isinstance(name, str) and name:
+                self.hunt_known = current = name
         self.snapshot.update(state=st, phase=st.phase, hunt=current or (st.dest if st.phase == "city" else None))
         if self.memory and st.members:
             self.memory.set("party", [[m.name, m.role, m.level] for m in st.members])
@@ -175,7 +186,7 @@ class Engine:
 
         # 6) prey (so' caçando: o tempo da prey so' corre na caça)
         prey = self.cfg.get("prey") or {}
-        if prey.get("enabled") and st.phase == "hunting" and current:
+        if prey.get("enabled") and st.phase == "hunting" and current and self._settled(st, current):
             every = prey.get("check_minutes", 10) * 60
             if now - self.last_ok.get("prey", -every) >= every and self._ready("prey"):
                 self._prey(acc, st, current)
@@ -207,6 +218,14 @@ class Engine:
                 self.mismatch = 0
                 if current and self.memory:
                     self.memory.set("last_hunt", current)
+
+    def _settled(self, st, current):
+        """Ja esta na caça que o bot quer? (nao escolhe Prey pra uma caça que vai trocar em seguida)"""
+        if self.cfg["mode"] != "hunt":
+            return True
+        hunt, _ = self.goal_target(st)
+        wanted = hunt or (self.cfg.get("hunt") or "").strip() or (self.best[1] if self.best else None)
+        return not wanted or wanted.casefold() == current.casefold()
 
     def _spent_today(self):
         day = datetime.date.fromtimestamp(self.clock()).isoformat()
@@ -241,7 +260,7 @@ class Engine:
                             action = ("any", slot["options"][0])
                             kind, value = action
                         else:
-                            acc.prey_reroll(slot["index"])
+                            acc.prey_reroll(slot["index"], value)
                             rerolls += 1
                             if value:
                                 self._add_spent(value)
@@ -297,6 +316,7 @@ class Engine:
     def _start(self, acc, target):
         diff = self.cfg["difficulty"]
         if self._do("iniciar caça", acc.start_hunt, target, diff):
+            self.hunt_known = target
             self.log(f"caçando {target} ({diff})")
             if self.memory:
                 self.memory.set("last_hunt", target)

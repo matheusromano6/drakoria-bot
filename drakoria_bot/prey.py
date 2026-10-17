@@ -8,19 +8,26 @@ import re
 def parse_reroll(title, text):
     """Botao 'Trocar lista' -> {'free': bool, 'gold': int|None, 'cards': bool}. Preço desconhecido = nao paga."""
     blob = f"{title} {text}".casefold()
-    if "grátis" in blob or "gratis" in blob:
-        return {"free": True, "gold": None, "cards": False}
+    # o preço vem antes: 'Trocar a lista: 3.000 gold (a troca grátis volta à meia-noite)' NAO e' gratis
+    value = parse_price(blob)
+    if value:
+        return {"free": False, "gold": value, "cards": False}
     if "carta" in blob or "coin" in blob:
         return {"free": False, "gold": None, "cards": True}
-    m = re.search(r"([\d.,]+)\s*(k)?\s*(gold|ouro|g\b)", blob)
-    if m:
-        number = m.group(1)
-        if m.group(2):
-            value = int(float(number.replace(".", "").replace(",", ".")) * 1000)
-        else:
-            value = int(re.sub(r"[^\d]", "", number))
-        return {"free": False, "gold": value, "cards": False}
+    if "grátis" in blob or "gratis" in blob:
+        return {"free": True, "gold": None, "cards": False}
     return {"free": False, "gold": None, "cards": False}
+
+
+def parse_price(text):
+    """'3.000 gold' -> 3000, '3k gold' -> 3000, 'Pagar 1,5k gold' -> 1500; sem preço -> None."""
+    m = re.search(r"([\d][\d.,]*)\s*(k)?\s*(gold|ouro)", (text or "").casefold())
+    if not m:
+        return None
+    number = m.group(1)
+    if m.group(2):
+        return int(float(number.replace(".", "").replace(",", ".")) * 1000)
+    return int(re.sub(r"[^\d]", "", number))
 
 
 def wanted_order(hunt_creatures, kills):
