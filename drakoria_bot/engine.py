@@ -2,7 +2,10 @@
 Prioridade: erro/queda -> login -> avisos -> loot (protecao de boss / venda) -> caça."""
 import time
 
+import datetime
+
 from . import hunts as H
+from . import prey as P
 
 LOOT_SETTINGS = "loot_settings"
 
@@ -22,7 +25,8 @@ class Engine:
         self.phase_since = (None, 0)    # (fase, desde)
         self.mismatch = 0
         self.best = None                # (level, caça) da 'Melhor escolha' do jogo
-        self.snapshot = {"state": None, "hunt": None, "target": None, "phase": "-", "action": ""}
+        self.prey_spent = {}            # ouro gasto trocando lista da Prey hoje (sem memory.json)
+        self.snapshot = {"state": None, "hunt": None, "target": None, "phase": "-", "action": "", "prey": []}
 
     # ------------------------------------------------------------------ util
     def _ready(self, key):
@@ -124,7 +128,15 @@ class Engine:
                 self.log(f"Loot Pouch com {st.loot_items} itens: vendido tudo (ouro {st.gold})")
             return
 
-        # 5) caça
+        # 5) prey (so' caçando: o tempo da prey so' corre na caça)
+        prey = self.cfg.get("prey") or {}
+        if prey.get("enabled") and st.phase == "hunting" and current:
+            every = prey.get("check_minutes", 10) * 60
+            if now - self.last_ok.get("prey", -every) >= every and self._ready("prey"):
+                self._prey(acc, st, current)
+                return
+
+        # 6) caça
         if self.cfg["mode"] != "hunt":
             return
         target = self.target_hunt(acc, st)
@@ -150,6 +162,60 @@ class Engine:
                 self.mismatch = 0
                 if current and self.memory:
                     self.memory.set("last_hunt", current)
+
+    def _spent_today(self):
+        day = datetime.date.fromtimestamp(self.clock()).isoformat()
+        data = (self.memory.get("prey_spent") if self.memory else self.prey_spent) or {}
+        return day, (data.get("gold", 0) if data.get("day") == day else 0)
+
+    def _add_spent(self, gold):
+        day, spent = self._spent_today()
+        self.prey_spent = {"day": day, "gold": spent + gold}
+        if self.memory:
+            self.memory.set("prey_spent", self.prey_spent)
+
+    def _prey(self, acc, st, hunt):
+        """Escolhe a prey dos espacos livres (regra em prey.py). Uma janela aberta, varias acoes, depois fecha."""
+        cfg = self.cfg["prey"]
+        creatures = next((h["creatures"] for h in self.hunts if h["name"].casefold() == hunt.casefold()), [])
+        wanted = P.wanted_order(creatures, st.kills)
+        gold = st.gold_value
+        rerolls = 0
+        try:
+            slots = acc.read_prey()
+            self.snapshot["prey"] = [(s["creature"], s["bonus"], s["time"]) for s in slots if s["state"] == "active"]
+            for slot in slots:
+                while slot["state"] == "selection":
+                    _, spent = self._spent_today()
+                    action = P.decide(slot, wanted, cfg, spent, gold)
+                    if action is None:
+                        break
+                    kind, value = action
+                    if kind == "reroll":
+                        if rerolls >= cfg.get("max_rerolls_per_check", 10):
+                            action = ("any", slot["options"][0])
+                            kind, value = action
+                        else:
+                            acc.prey_reroll(slot["index"])
+                            rerolls += 1
+                            if value:
+                                self._add_spent(value)
+                                gold = None if gold is None else gold - value
+                            self.log(f"Prey espaço {slot['index'] + 1}: trocou a lista ({'grátis' if not value else f'{value} de ouro'})")
+                            slot = next(s for s in acc.read_prey() if s["index"] == slot["index"])
+                            continue
+                    acc.prey_choose(slot["index"], value)
+                    why = "da caça" if kind == "choose" else "qualquer (nenhuma da caça; tenta de novo quando liberar)"
+                    self.log(f"Prey espaço {slot['index'] + 1}: {value} ({why})")
+                    break
+            self.last_ok["prey"] = self.clock()
+        except Exception as error:
+            self._fail("prey", error)
+        finally:
+            try:
+                acc.close_windows()
+            except Exception:
+                pass
 
     def _start(self, acc, target):
         diff = self.cfg["difficulty"]

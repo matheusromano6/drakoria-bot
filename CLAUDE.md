@@ -141,3 +141,28 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   busca 'Troll Cave' (digitando) -> Caçada online -> Normal -> Entrar na caçada -> caçando; identify() reconheceu
   a caça pelo rastreador; best_hunt = 'Troll Cave' pro lv 8.
 - Ainda NAO visto: sell_all (conta free), login automatico, troca de caça estando caçando.
+
+## Prey (17/10/2026, ao vivo)
+- Abre por `.drk-prey-topbar` (ou menu `.drk-prey-menu-item`): `.drk-prey-window` "Bonus contra uma criatura, para a Party
+  inteira". 4 espacos `.drk-prey-slot` (`state-selection` / `state-active` / `state-locked`): 1 e 2 liberados; 3 e 4 so pela
+  Drako Shop (2.750 / 5.000 Drako Coins). Tempo so corre CAÇANDO online (Bosses/Endless nao contam; "Pausado · fora da caça").
+- Escolha: lista de 9 criaturas por espaco (`button.drk-prey-creature[title=Nome]`) -> clicar seleciona -> `.drk-prey-confirm`
+  "Confirmar" (sem confirmacao extra). Bonus sorteado (dano, defesa, XP ou loot, 1-10 estrelas). Fica 2:00:00 de caça.
+  Escolhido por Claude 17/10 ~01:10 (Troll Cave): espaco 1 Young Troll (Dano reduzido +12%), espaco 2 Troll (Loot +13%).
+- Ativo: texto "Prey ativo / <criatura> / <bonus +N%> / ... / h:mm:ss / Pausado · fora da caça". Ferramentas `.drk-prey-tool`:
+  "Trocar lista" (gratis 1 por espaco por dia, renova a meia-noite; `.drk-prey-free`), "Sortear bonus" (1 carta),
+  "Escolher entre todas" (5 cartas). "Quando o tempo acabar": radios `.drk-prey-option` Liberar o espaco (padrao) /
+  Renovar sorteando (1 carta) / Travar (5 cartas).
+- Cartas = Prey Wildcards (0/250), compradas na Drako Shop com DRAKO COINS (5 = 250 coins ... 50 = 1.900), NAO com ouro.
+  O bot NUNCA gasta Drako Coins. Custo da troca de lista depois da gratis do dia: ainda nao visto (provavel ouro).
+- Troll Cave: espaco 1 tinha Spider/Young Troll, espaco 2 Troll/Rat (as listas sao sorteadas por espaco).
+
+## v1.1.0 - Prey automatica (17/10/2026, regra do usuario)
+- So' caçando e com a caça identificada, a cada 10 min: abre a Prey (read_prey), e em cada espaco LIVRE (state-selection):
+  criatura da caça na lista -> escolhe a que mais aparece (abates no rastreador); senao 'Trocar lista' gratis; depois troca
+  paga com OURO: modo 'budget' (ate prey.gold_per_day por dia, gasto em memory.json prey_spent) ou 'until_found'
+  (sem limite diario, respeita reserve_gold); ate 10 trocas por checagem; nao achou -> escolhe a 1a da lista (libera em
+  2h de caça e o bot tenta de novo). Ao escolher marca 'Liberar o espaço' no fim. NUNCA cartas/Drako Coins; preço
+  desconhecido = nao paga. Espaco ativo nao e' trocado.
+- Validado ao vivo: read_prey (2 ativos, Trocar lista gratis). prey_choose usa os mesmos seletores da escolha manual.
+- Ainda NAO visto: preço da troca paga (texto do botao depois da gratis), confirmacao da troca.

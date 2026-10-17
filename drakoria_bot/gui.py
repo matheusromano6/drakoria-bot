@@ -26,6 +26,7 @@ PHASES = {"hunting": "Caçando", "house": "Treinando (house)", "house_idle": "Na
           "error": "Erro / reconectando", "unknown": "?", "-": "-"}
 AUTO = "Automática (Melhor escolha do jogo)"
 MODES = {"hunt": "Caçar sempre", "watch": "Só vigiar (relogin, avisos, loot)"}
+PREY_MODES = {"budget": "Até X de ouro por dia", "until_found": "Até achar (sem limite diário)"}
 AUTO_SELL = {"auto": "Automático (liga se for Premium)", "on": "Sempre ligado", "off": "Desligado (vender pelo bot)"}
 MAX_LOG_LINES = 400
 
@@ -193,7 +194,7 @@ class App:
         st = snap.get("state") if snap else None
         if st is not None:
             view = (snap["phase"], snap.get("hunt"), snap.get("target"), st.difficulty, st.gold, st.loot_items, st.xp_hour,
-                    st.profit_hour, st.reserve, tuple((m.name, m.role, m.level, m.xp_pct, m.hp, m.hp_max) for m in st.members))
+                    st.profit_hour, st.reserve, tuple(snap.get("prey") or []), tuple((m.name, m.role, m.level, m.xp_pct, m.hp, m.hp_max) for m in st.members))
             if view != self._last_view:          # so' redesenha o que mudou
                 self._last_view = view
                 phase = PHASES.get(snap["phase"], snap["phase"])
@@ -211,7 +212,8 @@ class App:
                 self.stats.configure(text=(
                     f"Ouro {st.gold}   ·   Loot Pouch {loot}   ·   Reserva offline {st.reserve or '-'}\n"
                     f"XP/h {st.xp_hour or '-'}   ·   Lucro/h {st.profit_hour or '-'}\n"
-                    f"Alvo: {snap.get('target') or '-'}   ·   Auto Sell {'Premium' if st.premium else 'Free'}"))
+                    f"Alvo: {snap.get('target') or '-'}   ·   Auto Sell {'Premium' if st.premium else 'Free'}\n"
+                    f"Prey: {' · '.join(f'{c} {b} ({t})' for c, b, t in snap.get('prey') or []) or '-'}"))
         self.root.after(1000, self._poll_state)
 
     # ---------------------------------------------------------------- regras
@@ -247,12 +249,27 @@ class App:
         entry.grid(row=4, column=1, sticky="w", pady=6)
         entry.bind("<FocusOut>", lambda e: self._save_sell())
         entry.bind("<Return>", lambda e: self._save_sell())
+        self.prey_var = tk.BooleanVar(value=bool(self.cfg["prey"]["enabled"]))
+        ctk.CTkCheckBox(grid, text="Prey automática", variable=self.prey_var, fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                        text_color=TEXT, command=lambda: self._set_prey("enabled", self.prey_var.get())
+                        ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(8, 2))
+        label(7, "Trocar lista")
+        menu(7, list(PREY_MODES.values()), PREY_MODES.get(self.cfg["prey"]["mode"], PREY_MODES["budget"]),
+             lambda v: self._set_prey("mode", {b: a for a, b in PREY_MODES.items()}[v]))
+        label(8, "Ouro por dia")
+        self.prey_gold_var = tk.StringVar(value=str(self.cfg["prey"]["gold_per_day"]))
+        gold_entry = ctk.CTkEntry(grid, textvariable=self.prey_gold_var, width=100, fg_color=PANEL_ALT)
+        gold_entry.grid(row=8, column=1, sticky="w", pady=6)
+        gold_entry.bind("<FocusOut>", lambda e: self._save_prey_gold())
+        gold_entry.bind("<Return>", lambda e: self._save_prey_gold())
         self.relogin_var = tk.BooleanVar(value=bool(self.cfg["relogin"]))
         ctk.CTkCheckBox(grid, text="Relogin automático", variable=self.relogin_var, fg_color=ACCENT, hover_color=ACCENT_HOVER,
                         text_color=TEXT, command=lambda: self._set("relogin", self.relogin_var.get())
                         ).grid(row=5, column=0, columnspan=2, sticky="w", pady=8)
         ctk.CTkLabel(tab, text="'Proteger drops de boss' fica sempre ligado. Sem Auto Sell o bot usa 'Vender tudo agora' "
-                               "quando a Loot Pouch chega no número de itens. Insano+ pede level 250/450/700/1000.",
+                               "quando a Loot Pouch chega no número de itens. Insano+ pede level 250/450/700/1000. "
+                               "Prey: escolhe a criatura da caça; senão troca a lista (grátis, depois com ouro); "
+                               "nunca gasta cartas nem Drako Coins.",
                      text_color=MUTED, wraplength=380, justify="left").pack(anchor="w", padx=10, pady=6)
 
     def _set(self, key, value):
@@ -264,6 +281,20 @@ class App:
         self.cfg["loot"][key] = value
         self.save()
         self.log(f"regra: loot.{key} = {value}")
+
+    def _set_prey(self, key, value):
+        self.cfg["prey"][key] = value
+        self.save()
+        self.log(f"regra: prey.{key} = {value}")
+
+    def _save_prey_gold(self):
+        try:
+            value = max(0, int(self.prey_gold_var.get().replace(".", "")))
+        except ValueError:
+            self.prey_gold_var.set(str(self.cfg["prey"]["gold_per_day"]))
+            return
+        if value != self.cfg["prey"]["gold_per_day"]:
+            self._set_prey("gold_per_day", value)
 
     def _save_sell(self):
         try:

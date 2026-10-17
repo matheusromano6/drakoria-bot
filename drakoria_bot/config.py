@@ -17,6 +17,17 @@ DEFAULTS = {
         "sell_at_items": 30,              # sem Auto Sell: 'Vender tudo agora' com a Loot Pouch nesse numero de itens
         "check_minutes": 30,              # confere 'Proteger drops de boss' (sempre ligado) e o Auto Sell
     },
+    # Prey: espaco livre -> criatura da caça (a que mais aparece); senao troca gratis; depois troca paga com OURO
+    # ("until_found" = ate achar | "budget" = ate gold_per_day por dia); nao achou -> qualquer uma (tenta de novo em 2h).
+    # Nunca gasta cartas (Prey Wildcards) nem Drako Coins.
+    "prey": {
+        "enabled": True,
+        "mode": "budget",
+        "gold_per_day": 5000,
+        "reserve_gold": 0,                # nunca deixa o ouro abaixo disso trocando lista
+        "check_minutes": 10,
+        "max_rerolls_per_check": 10,
+    },
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s
     "unknown_reload_seconds": 120,        # estado desconhecido por mais disso: recarrega

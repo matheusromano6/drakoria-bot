@@ -4,6 +4,7 @@ import re
 import time
 from dataclasses import dataclass, field
 
+from . import prey as prey_rules
 from . import selectors as S
 
 READ_JS = r"""() => {
@@ -18,7 +19,7 @@ READ_JS = r"""() => {
     error: /Error 10\d\d|Bad Gateway|Cloudflare|ERR_|This site can.t be reached/i.test(body.slice(0, 2000)),
     disconnected: /desconectad|conexão perdida|reconectando/i.test(body.slice(0, 4000)),
     members: [], gold: '', goldTitle: '', loot: null, backpack: '', premium: '', reserve: '', xph: '', profith: '',
-    tracker: [], difficulty: '', dest: '', modals: [], training: vis(document.querySelector('.house-hud-btn.danger'))};
+    tracker: [], kills: {}, difficulty: '', dest: '', modals: [], training: vis(document.querySelector('.house-hud-btn.danger'))};
   document.querySelectorAll('.td-member-main').forEach(m => {
     const lines = txt(m).split('\n').map(s => s.trim()).filter(Boolean);
     out.members.push(lines);
@@ -34,13 +35,34 @@ READ_JS = r"""() => {
   const r = body.match(/Reserva offline\n([\d:]+)/); if (r) out.reserve = r[1];
   const x = body.match(/XP da Party\/h\n([^\n]+)/); if (x) out.xph = x[1];
   const p = body.match(/Lucro\/h\n([^\n]+)/); if (p) out.profith = p[1];
-  document.querySelectorAll('.bestiary-tracker-row').forEach(t => out.tracker.push((t.title || '').split(':')[0].trim()));
+  document.querySelectorAll('.bestiary-tracker-row').forEach(t => { const m = (t.title || '').match(/^([^:]+):\s*([\d.]+)/);
+    if (m) { out.tracker.push(m[1].trim()); out.kills[m[1].trim()] = +m[2].replace(/\./g, ''); } });
   out.difficulty = txt(document.querySelector('.world-hunt-difficulty-control')).split('\n')[0] || '';
   const d = document.querySelector('.cp-dest'); out.dest = d ? (d.title || '') : '';
   document.querySelectorAll('.modal, .tibia-window').forEach(w => {
     if (!vis(w)) return;
     const head = txt(w.querySelector('.tibia-window-brand, header')).split('\n')[0];
     if (head) out.modals.push(head);
+  });
+  return out;
+}"""
+
+
+PREY_JS = r"""([slotSel, creatureSel, toolSel]) => {
+  const out = [];
+  document.querySelectorAll('.drk-prey-window ' + slotSel).forEach((s, index) => {
+    const cls = String(s.className);
+    if (cls.includes('state-locked')) return;
+    const lines = (s.innerText || '').split('\n').map(x => x.trim()).filter(Boolean);
+    const tool = [...s.querySelectorAll(toolSel)].find(b => /Trocar lista/.test(b.innerText));
+    const active = cls.includes('state-active');
+    const at = lines.indexOf('Prey ativo');
+    out.push({index, state: active ? 'active' : (cls.includes('state-selection') ? 'selection' : 'other'),
+      creature: active && at >= 0 ? lines[at + 1] : '', bonus: active && at >= 0 ? lines[at + 2] : '',
+      time: (lines.find(l => /^\d+:\d\d:\d\d$/.test(l)) || ''),
+      options: active ? [] : [...s.querySelectorAll(creatureSel)].map(b => b.title),
+      reroll_title: tool ? (tool.title || '') : '', reroll_text: tool ? tool.innerText.replace(/\n/g, ' ') : '',
+      reroll_enabled: !!tool && !tool.disabled});
   });
   return out;
 }"""
@@ -68,9 +90,14 @@ class State:
     xp_hour: str = ""
     profit_hour: str = ""
     tracker: list = field(default_factory=list)     # criaturas do rastreador (identifica a caça)
+    kills: dict = field(default_factory=dict)       # criatura -> abates no bestiario (qual aparece mais)
     difficulty: str = ""
     dest: str = ""                   # proxima caça na cidade
     modals: list = field(default_factory=list)
+
+    @property
+    def gold_value(self):
+        return parse_gold(self.gold)
 
     @property
     def level(self):
@@ -80,6 +107,24 @@ class State:
 def _int(text):
     digits = re.sub(r"[^\d]", "", text or "")
     return int(digits) if digits else 0
+
+
+def parse_gold(text):
+    """'500' -> 500, '4,9k' -> 4900, '1,2kk' / '1,2m' -> 1200000 (o topo arredonda)."""
+    t = (text or "").strip().lower().replace(" ", "")
+    if not re.search(r"\d", t):
+        return None
+    mult = 1
+    if t.endswith("kk") or t.endswith("m"):
+        mult, t = 1_000_000, t.rstrip("km")
+    elif t.endswith("k"):
+        mult, t = 1000, t[:-1]
+    try:
+        if mult > 1:
+            return int(float(t.replace(".", "").replace(",", ".")) * mult)
+        return int(re.sub(r"[^\d]", "", t) or 0)
+    except ValueError:
+        return None
 
 
 def parse_member(lines):
@@ -100,7 +145,8 @@ def parse_member(lines):
 def parse_state(raw):
     st = State(gold=raw.get("gold", ""), loot_items=raw.get("loot"), backpack=raw.get("backpack", ""),
                reserve=raw.get("reserve", ""), xp_hour=raw.get("xph", ""), profit_hour=raw.get("profith", ""),
-               tracker=list(raw.get("tracker") or []), difficulty=raw.get("difficulty", ""),
+               tracker=list(raw.get("tracker") or []), kills=dict(raw.get("kills") or {}),
+               difficulty=raw.get("difficulty", ""),
                modals=list(raw.get("modals") or []))
     st.premium = "premium" in (raw.get("premium") or "").casefold()
     dest = re.match(r"Próximo destino:\s*([^·]+)", raw.get("dest") or "")
@@ -285,6 +331,54 @@ class Account:
             return True
         finally:
             self.close_windows()
+
+    # ------------------------------------------------------------ prey
+    def _open_prey(self):
+        if self.page.locator(S.PREY_WINDOW).is_visible():
+            return
+        self.close_windows()
+        self.page.evaluate("s => document.querySelector(s).click()", S.PREY_OPEN)
+        if not self._wait(lambda: self.page.locator(S.PREY_WINDOW).is_visible(), 5):
+            raise RuntimeError("a janela Prey nao abriu")
+
+    def read_prey(self):
+        """Abre a Prey e devolve os espacos liberados: [{index, state, creature, bonus, time, options, reroll, reroll_enabled}]."""
+        self._open_prey()
+        raw = self.page.evaluate(PREY_JS, [S.PREY_SLOT, S.PREY_CREATURE, S.PREY_TOOL])
+        for slot in raw:
+            slot["reroll"] = prey_rules.parse_reroll(slot.pop("reroll_title", ""), slot.pop("reroll_text", ""))
+        return raw
+
+    def _slot(self, index):
+        return self.page.locator(S.PREY_WINDOW + " " + S.PREY_SLOT).nth(index)
+
+    def prey_choose(self, index, creature):
+        slot = self._slot(index)
+        slot.locator(S.PREY_CREATURE + f'[title="{creature}"]').click()
+        time.sleep(0.4)
+        confirm = slot.locator(S.PREY_CONFIRM)
+        if not confirm.is_enabled():
+            raise RuntimeError(f"Confirmar da Prey desabilitado ({creature})")
+        confirm.click()
+        if not self._wait(lambda: "state-active" in (slot.get_attribute("class") or ""), 6):
+            raise RuntimeError(f"Prey {creature} nao ficou ativa")
+        # quando acabar: 'Liberar o espaco' (gratis) -> o bot escolhe de novo; nunca renovar/travar (gasta cartas)
+        free = slot.locator(S.PREY_OPTION, has_text=S.PREY_RELEASE_TEXT).locator("input[type=radio]")
+        if free.count() and not free.first.is_checked():
+            free.first.check()
+
+    def prey_reroll(self, index):
+        slot = self._slot(index)
+        names = "l => l.map(b => b.title).join('|')"
+        before = slot.locator(S.PREY_CREATURE).evaluate_all(names)
+        tool = slot.locator(S.PREY_TOOL, has_text=S.PREY_REROLL_TEXT).first
+        if tool.is_disabled():
+            raise RuntimeError("Trocar lista desabilitado")
+        tool.click()
+        time.sleep(0.6)
+        self._click_text(".modal", r"^(Confirmar|Trocar|Sim)$")      # se o jogo pedir confirmacao do preço
+        if not self._wait(lambda: slot.locator(S.PREY_CREATURE).evaluate_all(names) != before, 6):
+            raise RuntimeError("a lista da Prey nao mudou")
 
     # ------------------------------------------------------------ login
     def login(self, username, password):

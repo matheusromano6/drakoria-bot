@@ -19,6 +19,9 @@ class FakeAccount:
         self.calls = []
         self.best = "Troll Cave"
         self.fail = set()
+        self.prey = []          # espacos da Prey
+        self.prey_lists = []    # proximas listas ao trocar
+        self.closed = 0
 
     def read(self):
         return copy.deepcopy(self.st)
@@ -62,6 +65,24 @@ class FakeAccount:
         self._call("leave_house")
         self.st.phase = "city"
 
+    def read_prey(self):
+        self._call("read_prey")
+        return copy.deepcopy(self.prey)
+
+    def prey_choose(self, index, creature):
+        self._call("prey_choose", index, creature)
+        slot = self.prey[index]
+        slot.update(state="active", creature=creature, options=[])
+
+    def prey_reroll(self, index):
+        self._call("prey_reroll", index)
+        slot = self.prey[index]
+        slot["options"] = self.prey_lists.pop(0)
+        slot["reroll"] = {"free": False, "gold": 300, "cards": False}
+
+    def close_windows(self):
+        self.closed += 1
+
     def login(self, user, password):
         self._call("login", user)
         self.st.phase = "city"
@@ -87,6 +108,7 @@ class Clock:
 
 
 def make(acc, creds=None, **cfg_over):
+    cfg_over.setdefault("prey", {"enabled": False})
     cfg = config._merge(config.DEFAULTS, cfg_over)
     clock = Clock()
     logs = []
@@ -234,6 +256,64 @@ class EngineTest(unittest.TestCase):
         clock.t += 301
         eng.tick(acc)
         self.assertEqual(names(acc).count("start_hunt"), 2)
+
+
+def prey_slot(options, free=True):
+    return {"index": 0, "state": "selection", "creature": "", "bonus": "", "time": "", "options": options,
+            "reroll_enabled": True, "reroll": {"free": free, "gold": None, "cards": False}}
+
+
+class PreyEngineTest(unittest.TestCase):
+    def setUp(self):
+        self.acc = FakeAccount(phase="hunting", tracker=TROLLS)
+        self.acc.st.kills = {"Troll": 40, "Rat": 3}
+        self.acc.st.gold = "4,9k"
+
+    def run_prey(self, **prey):
+        conf = {"enabled": True, "mode": "budget", "gold_per_day": 1000}
+        conf.update(prey)
+        eng, clock, logs = make(self.acc, hunt="Troll Cave", prey=conf)
+        eng.tick(self.acc)      # loot
+        eng.tick(self.acc)      # prey
+        return eng, clock, logs
+
+    def test_picks_most_seen_creature_of_hunt(self):
+        self.acc.prey = [prey_slot(["Bat", "Rat", "Troll"])]
+        self.run_prey()
+        self.assertIn(("prey_choose", 0, "Troll"), self.acc.calls)
+        self.assertNotIn("prey_reroll", names(self.acc))
+        self.assertGreaterEqual(self.acc.closed, 1)
+
+    def test_free_then_paid_reroll_until_found(self):
+        self.acc.prey = [prey_slot(["Bat"])]
+        self.acc.prey_lists = [["Wolf"], ["Spider", "Orc"]]
+        eng, clock, logs = self.run_prey()
+        self.assertEqual(names(self.acc).count("prey_reroll"), 2)    # gratis + 1 paga (300)
+        self.assertIn(("prey_choose", 0, "Spider"), self.acc.calls)
+        self.assertEqual(eng._spent_today()[1], 300)
+
+    def test_budget_exhausted_picks_any(self):
+        self.acc.prey = [prey_slot(["Bat"], free=False)]
+        self.acc.prey[0]["reroll"]["gold"] = 2000
+        self.run_prey()
+        self.assertNotIn("prey_reroll", names(self.acc))
+        self.assertIn(("prey_choose", 0, "Bat"), self.acc.calls)
+
+    def test_active_slots_left_alone_and_checked_periodically(self):
+        self.acc.prey = [dict(prey_slot([]), state="active", creature="Troll")]
+        eng, clock, logs = self.run_prey()
+        eng.tick(self.acc)
+        self.assertEqual(names(self.acc).count("read_prey"), 1)
+        clock.t += 11 * 60
+        eng.tick(self.acc)
+        self.assertEqual(names(self.acc).count("read_prey"), 2)
+        self.assertNotIn("prey_choose", names(self.acc))
+
+    def test_no_prey_outside_hunt(self):
+        self.acc.st.phase = "city"
+        self.acc.prey = [prey_slot(["Troll"])]
+        self.run_prey()
+        self.assertNotIn("read_prey", names(self.acc))
 
 
 if __name__ == "__main__":

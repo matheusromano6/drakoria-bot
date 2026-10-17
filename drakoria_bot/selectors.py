@@ -53,6 +53,17 @@ OFFLINE_COLLECT = ".op-collect"                 # "Coletar e continuar"
 # botoes "inofensivos" pra fechar avisos/relatorios/morte
 DISMISS_TEXT = r"^(Coletar e continuar|Continuar|OK|Ok|Fechar|Entendi|Confirmar)$"
 
+# prey (2 espacos liberados; 3 e 4 = Drako Shop). NUNCA: Comprar cartas / Sortear bonus / Escolher entre todas
+PREY_OPEN = ".drk-prey-topbar"
+PREY_WINDOW = ".drk-prey-window"
+PREY_SLOT = ".drk-prey-slot"                    # state-selection / state-active / state-locked
+PREY_CREATURE = "button.drk-prey-creature"      # title = criatura
+PREY_CONFIRM = ".drk-prey-confirm"
+PREY_TOOL = ".drk-prey-tool"
+PREY_REROLL_TEXT = "Trocar lista"
+PREY_OPTION = ".drk-prey-option"
+PREY_RELEASE_TEXT = "Liberar o espaço"
+
 # login (pagina inicial do site)
 LOGIN_OPEN_TEXT = r"^(Entrar|Já tenho conta)$"
 LOGIN_SUBMIT_TEXT = r"Entrar no jogo"
