@@ -37,7 +37,8 @@ HUNT_TRACKER_ROW = ".bestiary-tracker-row"      # title "Troll: 4 de 250 kills Â
 HUNT_DIFFICULTY = ".world-hunt-difficulty-control"
 
 # house / treino
-HOUSE_STOP = ".house-hud-btn.danger"            # "Parar" (title "Parar treino")
+HOUSE_STOP = ".house-hud-btn.danger"            # "Parar" (title "Parar treino"); parado vira "Treinar" (.primary)
+HOUSE_LEAVE = "button[title='Sair da house']"    # parado na house -> Thais
 
 # loot pouch
 LOOT_OPEN = "button[title^='Abrir a Loot Pouch']"

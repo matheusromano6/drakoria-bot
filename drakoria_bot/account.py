@@ -18,7 +18,7 @@ READ_JS = r"""() => {
     error: /Error 10\d\d|Bad Gateway|Cloudflare|ERR_|This site can.t be reached/i.test(body.slice(0, 2000)),
     disconnected: /desconectad|conexão perdida|reconectando/i.test(body.slice(0, 4000)),
     members: [], gold: '', goldTitle: '', loot: null, backpack: '', premium: '', reserve: '', xph: '', profith: '',
-    tracker: [], difficulty: '', dest: '', modals: []};
+    tracker: [], difficulty: '', dest: '', modals: [], training: vis(document.querySelector('.house-hud-btn.danger'))};
   document.querySelectorAll('.td-member-main').forEach(m => {
     const lines = txt(m).split('\n').map(s => s.trim()).filter(Boolean);
     out.members.push(lines);
@@ -58,7 +58,7 @@ class Member:
 
 @dataclass
 class State:
-    phase: str = "unknown"           # hunting | house | city | login | error | unknown
+    phase: str = "unknown"           # hunting | house (treinando) | house_idle | city | login | error | unknown
     members: list = field(default_factory=list)
     gold: str = ""
     loot_items: int = None
@@ -116,7 +116,7 @@ def parse_state(raw):
     elif S.SCENE_HUNTING in scene:
         st.phase = "hunting"
     elif S.SCENE_HOUSE in scene:
-        st.phase = "house"
+        st.phase = "house" if raw.get("training") else "house_idle"
     elif S.SCENE_CITY in scene:
         st.phase = "city"
     return st
@@ -230,7 +230,14 @@ class Account:
     def stop_training(self):
         if not self._js_click(S.HOUSE_STOP):
             raise RuntimeError("botao 'Parar' do treino nao encontrado")
-        time.sleep(1.5)
+        self._wait(lambda: not self.page.locator(S.HOUSE_STOP).is_visible(), 6)
+
+    def leave_house(self):
+        if not self._js_click(S.HOUSE_LEAVE):
+            raise RuntimeError("botao 'Sair da house' nao encontrado")
+        if not self._wait(lambda: S.SCENE_HOUSE not in (self.page.evaluate(
+                "s => (document.querySelector(s) || {}).className || ''", S.SCENE) or ""), 10):
+            raise RuntimeError("nao saiu da house")
 
     # ------------------------------------------------------------ loot
     def _open_loot(self):

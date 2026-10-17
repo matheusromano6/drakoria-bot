@@ -133,3 +133,11 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
 - AINDA NAO validado com o bot rodando: start_hunt pela busca, stop_training ('Parar' na house), sell_all (confirmacao?),
   login (form da pagina inicial), troca de caça estando caçando, best_hunt.
 - Conta em treino na house + modo 'Caçar sempre' -> o bot PARA o treino e vai caçar (modo 'Só vigiar' nao mexe).
+
+## Teste ao vivo do bot (17/10/2026 00:32)
+- 'Parar' na house so' para o treino: a party FICA na house (botao vira `.house-hud-btn.primary` "Treinar"). Fase nova
+  `house_idle` -> `button[title='Sair da house']` -> Thais em ~5s. v1.0.1.
+- VALIDADO: Loot Pouch conferida (protecao de boss + Auto Sell ligados, Premium) -> parar treino -> sair da house ->
+  busca 'Troll Cave' (digitando) -> Caçada online -> Normal -> Entrar na caçada -> caçando; identify() reconheceu
+  a caça pelo rastreador; best_hunt = 'Troll Cave' pro lv 8.
+- Ainda NAO visto: sell_all (conta free), login automatico, troca de caça estando caçando.

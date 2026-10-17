@@ -22,7 +22,7 @@ MEMORY_PATH = os.path.join(ROOT, "memory.json")
 BG, PANEL, PANEL_ALT, BORDER = "#0f1216", "#161b21", "#1e252d", "#2b3440"
 TEXT, MUTED, ACCENT, ACCENT_HOVER, DANGER, OK = "#e8edf2", "#8c98a4", "#e0a526", "#c48d16", "#f05a4f", "#3fb950"
 DARK_TEXT = "#1a1200"
-PHASES = {"hunting": "Caçando", "house": "Treinando (house)", "city": "Na cidade", "login": "Deslogado",
+PHASES = {"hunting": "Caçando", "house": "Treinando (house)", "house_idle": "Na house", "city": "Na cidade", "login": "Deslogado",
           "error": "Erro / reconectando", "unknown": "?", "-": "-"}
 AUTO = "Automática (Melhor escolha do jogo)"
 MODES = {"hunt": "Caçar sempre", "watch": "Só vigiar (relogin, avisos, loot)"}

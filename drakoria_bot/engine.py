@@ -134,6 +134,9 @@ class Engine:
         if st.phase == "house":
             if self._do("parar treino", acc.stop_training):
                 self.log("treino parado pra caçar")
+        elif st.phase == "house_idle":
+            if self._do("sair da house", acc.leave_house):
+                self.log("saiu da house")
         elif st.phase == "city":
             self._start(acc, target)
         elif st.phase == "hunting":

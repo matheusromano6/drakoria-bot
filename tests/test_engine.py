@@ -56,6 +56,10 @@ class FakeAccount:
 
     def stop_training(self):
         self._call("stop_training")
+        self.st.phase = "house_idle"
+
+    def leave_house(self):
+        self._call("leave_house")
         self.st.phase = "city"
 
     def login(self, user, password):
@@ -158,6 +162,8 @@ class EngineTest(unittest.TestCase):
         eng.tick(acc)
         eng.tick(acc)
         self.assertIn("stop_training", names(acc))
+        eng.tick(acc)
+        self.assertEqual(names(acc)[-1], "leave_house")
         eng.tick(acc)
         self.assertEqual(names(acc)[-1], "start_hunt")
 
