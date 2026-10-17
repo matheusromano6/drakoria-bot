@@ -84,8 +84,14 @@ class Engine:
         return G.goal_hunt(self.active_tasks, goals.get("bestiary") or [], self.bestiary_progress(), self.tasks,
                            self.hunts, st.level, goals.get("level_over", 10))
 
+    def target_difficulty(self, st):
+        """Dificuldade do objetivo atual (escolhida na aba Objetivos) ou a da aba Regras."""
+        _, _, key = self.goal_target(st)
+        chosen = ((self.cfg.get("goals") or {}).get("difficulty") or {}).get(key or "")
+        return chosen or self.cfg["difficulty"]
+
     def target_hunt(self, acc, st):
-        hunt, why = self.goal_target(st)
+        hunt, why, _ = self.goal_target(st)
         self.snapshot["goal"] = why
         if hunt:
             return hunt
@@ -178,6 +184,13 @@ class Engine:
         goals = self.cfg.get("goals") or {}
         if st.phase == "hunting":
             self._note_tracker(st)
+        if goals.get("bestiary") and st.phase in ("hunting", "city"):
+            every = goals.get("bestiary_minutes", 30) * 60
+            if now - self.last_ok.get("ler bestiary", -every) >= every and self._ready("ler bestiary"):
+                found = self._do("ler bestiary", acc.read_bestiary)
+                if isinstance(found, dict):
+                    self._merge_bestiary(found)
+                return
         if goals.get("enabled", True):
             every = goals.get("check_minutes", 10) * 60
             if now - self.last_ok.get("tasks", -every) >= every and self._ready("tasks"):
@@ -206,14 +219,21 @@ class Engine:
             if self._do("sair da house", acc.leave_house):
                 self.log("saiu da house")
         elif st.phase == "city":
-            self._start(acc, target)
+            self._start(acc, target, self.target_difficulty(st))
         elif st.phase == "hunting":
-            if current and current.casefold() != target.casefold():
+            diff = self.target_difficulty(st)
+            wrong_hunt = current and current.casefold() != target.casefold()
+            wrong_diff = current and not wrong_hunt and st.difficulty and \
+                st.difficulty.casefold() != diff.casefold()
+            if wrong_hunt or wrong_diff:
                 self.mismatch += 1
-                if self.mismatch >= 2:          # 2 leituras seguidas: troca de caça
+                if self.mismatch >= 2:          # 2 leituras seguidas: troca de caça/dificuldade
                     self.mismatch = 0
-                    self.log(f"caçando {current}, mas a escolhida e' {target}: trocando")
-                    self._start(acc, target)
+                    if wrong_hunt:
+                        self.log(f"caçando {current}, mas a escolhida e' {target}: trocando")
+                    else:
+                        self.log(f"{current} em {st.difficulty}, mas a escolhida e' {diff}: trocando a dificuldade")
+                    self._start(acc, target, diff)
             else:
                 self.mismatch = 0
                 if current and self.memory:
@@ -223,7 +243,7 @@ class Engine:
         """Ja esta na caça que o bot quer? (nao escolhe Prey pra uma caça que vai trocar em seguida)"""
         if self.cfg["mode"] != "hunt":
             return True
-        hunt, _ = self.goal_target(st)
+        hunt, _, _ = self.goal_target(st)
         wanted = hunt or (self.cfg.get("hunt") or "").strip() or (self.best[1] if self.best else None)
         return not wanted or wanted.casefold() == current.casefold()
 
@@ -313,8 +333,20 @@ class Engine:
             except Exception:
                 pass
 
-    def _start(self, acc, target):
-        diff = self.cfg["difficulty"]
+    def _merge_bestiary(self, found):
+        progress = dict(self.bestiary_progress())
+        queue = {c.casefold() for c in (self.cfg.get("goals") or {}).get("bestiary") or []}
+        for key, value in found.items():
+            before = progress.get(key)
+            if key in queue and value[1] and value[0] >= value[1] and not (before and before[1] and before[0] >= before[1]):
+                self.log(f"bestiary {key} completo ({value[0]}/{value[1]})")
+            progress[key] = value
+        self._bestiary = progress
+        if self.memory:
+            self.memory.set("bestiary", progress)
+
+    def _start(self, acc, target, diff=None):
+        diff = diff or self.cfg["difficulty"]
         if self._do("iniciar caça", acc.start_hunt, target, diff):
             self.hunt_known = target
             self.log(f"caçando {target} ({diff})")

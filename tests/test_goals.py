@@ -27,7 +27,12 @@ class GoalsTest(unittest.TestCase):
         active = [{"name": "t1", "ready": False}]
         self.assertEqual(G.goal_hunt(active, ["Troll"], {}, TASKS, HUNTS, 8, 10)[0], "B")
         self.assertEqual(G.goal_hunt([{"name": "t1", "ready": True}], ["Troll"], {}, TASKS, HUNTS, 8, 10)[0], "A")
-        self.assertEqual(G.goal_hunt([], ["Troll"], {"troll": [250, 250]}, TASKS, HUNTS, 8, 10), (None, ""))
+        self.assertEqual(G.goal_hunt([], ["Troll"], {"troll": [250, 250]}, TASKS, HUNTS, 8, 10), (None, "", None))
+        self.assertEqual(G.goal_hunt(active, [], {}, TASKS, HUNTS, 8, 10)[2], "t1")
+
+    def test_bestiary_title(self):
+        self.assertEqual(G.parse_bestiary_title("Rotworm · 421 / 500 kills"), ("Rotworm", 421, 500))
+        self.assertEqual(G.parse_bestiary_title("Ghoul · 1.050 / 500 kills"), ("Ghoul", 1050, 500))
 
     def test_next_to_accept(self):
         rows = {"t1": "available", "t2": "available", "t3": "available"}

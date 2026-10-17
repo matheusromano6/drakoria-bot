@@ -86,6 +86,23 @@ TASKS_JS = r"""() => {
 }"""
 
 
+BESTIARY_JS = r"""async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const tiles = () => [...document.querySelectorAll('.bestiary-class-tile')];
+  const known = tiles().map(t => t.innerText.replace(/\s+/g, ' ').trim()).filter(t => !/ 0 \//.test(' ' + t.split(' ').slice(-3).join(' ')));
+  const out = [];
+  for (const label of known) {
+    const tile = tiles().find(x => x.innerText.replace(/\s+/g, ' ').trim() === label);
+    if (!tile) continue;
+    tile.click(); await wait(500);
+    document.querySelectorAll('.bestiary-creature:not(.unknown)').forEach(c => out.push(c.title || ''));
+    const back = [...document.querySelectorAll('.workspace-window button')].find(b => b.innerText.trim() === 'Voltar');
+    if (back) { back.click(); await wait(350); }
+  }
+  return out;
+}"""
+
+
 @dataclass
 class Member:
     name: str
@@ -406,6 +423,27 @@ class Account:
         if not self._wait(lambda: card.count() == 0 or not card.is_visible(), 6):
             raise RuntimeError(f"task '{name}' continua ativa depois de entregar")
         return text
+
+    # ------------------------------------------------------------ bestiary
+    def read_bestiary(self):
+        """Cyclopedia > Bestiário: {criatura_minusculas: [abates, meta]} das conhecidas (as desconhecidas nem aparecem)."""
+        from . import goals as goal_rules
+        self.close_windows()
+        self.page.evaluate("s => document.querySelector(s).click()", S.CYCLOPEDIA_OPEN)
+        if not self._wait(lambda: self.page.locator(S.CYCLOPEDIA_TAB).first.is_visible(), 6):
+            raise RuntimeError("a Cyclopedia nao abriu")
+        try:
+            self.page.locator(S.CYCLOPEDIA_TAB, has_text=S.BESTIARY_TAB_TEXT).first.click()
+            if not self._wait(lambda: self.page.locator(S.BESTIARY_CLASS).first.is_visible(), 5):
+                raise RuntimeError("aba Bestiário nao abriu")
+            out = {}
+            for title in self.page.evaluate(BESTIARY_JS):
+                parsed = goal_rules.parse_bestiary_title(title)
+                if parsed:
+                    out[parsed[0].casefold()] = [parsed[1], parsed[2]]
+            return out
+        finally:
+            self.close_windows()
 
     # ------------------------------------------------------------ prey
     def _open_prey(self):

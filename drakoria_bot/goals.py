@@ -63,7 +63,8 @@ def next_tasks_to_accept(queue, task_state, active_count, tasks, hunts, party_le
 
 
 def goal_hunt(active_tasks, bestiary_queue, progress, tasks, hunts, party_level, level_over):
-    """(caça, motivo) do objetivo atual, ou (None, '') se nenhum objetivo pode ser feito agora.
+    """(caça, motivo, chave) do objetivo atual, ou (None, '', None). chave = nome da task ou criatura
+    (usada pra dificuldade escolhida pra aquele objetivo).
     active_tasks: [{'name', 'ready'}] na ordem do jogo."""
     by_name = {t["name"]: t for t in tasks}
     for active in active_tasks:
@@ -72,11 +73,20 @@ def goal_hunt(active_tasks, bestiary_queue, progress, tasks, hunts, party_level,
             continue
         hunt = reachable_hunt(task["creature"], hunts, party_level, level_over)
         if hunt:
-            return hunt, f"task {task['name']} ({task['creature']})"
+            return hunt, f"task {task['name']} ({task['creature']})", task["name"]
     for creature in bestiary_queue:
         if bestiary_done(creature, progress):
             continue
         hunt = reachable_hunt(creature, hunts, party_level, level_over)
         if hunt:
-            return hunt, f"bestiary {creature}"
-    return None, ""
+            return hunt, f"bestiary {creature}", creature
+    return None, "", None
+
+
+def parse_bestiary_title(title):
+    """'Rotworm · 421 / 500 kills' (Cyclopedia) -> ('Rotworm', 421, 500)."""
+    import re
+    m = re.match(r"^(.+?)\s*·\s*([\d.]+)\s*/\s*([\d.]+)", title or "")
+    if not m:
+        return None
+    return m.group(1).strip(), int(m.group(2).replace(".", "")), int(m.group(3).replace(".", ""))

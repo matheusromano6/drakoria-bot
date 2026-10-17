@@ -62,6 +62,12 @@ TASK_ROW = ".tibia-tasks-list .tibia-task-row"   # classes: claimed / accepted /
 TASK_ACCEPT_TEXT = "Aceitar"
 TASK_ACTIVE = ".tibia-tasks-active .tibia-task-active"
 
+# cyclopedia / bestiary
+CYCLOPEDIA_OPEN = ".quick-access-button[title^='Cyclopedia']"
+CYCLOPEDIA_TAB = ".cyclopedia-tab"
+BESTIARY_TAB_TEXT = "Bestiário"
+BESTIARY_CLASS = ".bestiary-class-tile"          # 'Vermes 3 / 74' (conhecidas / total)
+
 # prey (2 espacos liberados; 3 e 4 = Drako Shop). NUNCA: Comprar cartas / Sortear bonus / Escolher entre todas
 PREY_OPEN = ".drk-prey-topbar"
 PREY_WINDOW = ".drk-prey-window"

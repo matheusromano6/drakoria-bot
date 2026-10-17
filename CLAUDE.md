@@ -211,3 +211,12 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   'Pagar 3.000 gold'. O bot so' paga se o preço <= o que decidiu; senao Cancela. parse_reroll: preço antes de 'grátis'.
 - Slot que acabou: 'Escolha a nova criatura: o bônus guardado continua' (bonus fica pra proxima criatura).
 - Janela comum esquecida aberta (detalhes) virava 'aviso' em loop: agora dismiss so' clica visivel e fecha o resto.
+
+## v1.3.0 - dificuldade por objetivo + bestiary pela Cyclopedia (17/10/2026, usuario)
+- Aba Objetivos: cada task/criatura MARCADA ganha seletor de dificuldade (Padrão = a da aba Regras; Fácil..Impossível).
+  goals.difficulty {task ou criatura: dificuldade}. goal_hunt devolve (caça, motivo, chave). Caçando a caça certa em
+  outra dificuldade (2 leituras) -> start_hunt de novo na mesma caça com a dificuldade do objetivo.
+- Bestiary pela Cyclopedia (a cada goals.bestiary_minutes=30, com fila de bestiary): quick-access 'Cyclopedia' ->
+  `.cyclopedia-tab` Bestiário -> cada `.bestiary-class-tile` com conhecidas > 0 -> titles `.bestiary-creature`
+  'Rotworm · 421 / 500 kills' -> Voltar. Necessario porque com task ativa o rastreador da caça mostra so' as tasks.
+  Validado ao vivo 17/10: 8 criaturas lidas (Rotworm 489/500, Ghoul 1050/500...).

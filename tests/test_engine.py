@@ -57,7 +57,12 @@ class FakeAccount:
     def start_hunt(self, hunt, difficulty):
         self._call("start_hunt", hunt, difficulty)
         self.st.phase = "hunting"
+        self.st.difficulty = difficulty
         self.st.tracker = list(next(h["creatures"] for h in HUNTS if h["name"] == hunt))
+
+    def read_bestiary(self):
+        self._call("read_bestiary")
+        return dict(getattr(self, "bestiary", {}))
 
     def current_hunt(self):
         self._call("current_hunt")
@@ -394,6 +399,7 @@ class GoalsEngineTest(unittest.TestCase):
         acc = FakeAccount(phase="city")
         eng, clock, logs = self.make(acc, bestiary=["Rotworm", "Bat"])
         eng.tick(acc)
+        eng.tick(acc)       # bestiary na Cyclopedia (nada)
         eng.tick(acc)       # tasks (nada)
         eng.tick(acc)
         self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Rotworms"))
@@ -431,6 +437,48 @@ class PreyWaitsHuntTest(unittest.TestCase):
         eng.tick(acc)
         eng.tick(acc)
         self.assertNotIn("read_prey", names(acc))
+
+
+class GoalDifficultyTest(unittest.TestCase):
+    def make(self, acc, **goals):
+        conf = {"enabled": True, "tasks": [], "bestiary": [], "level_over": 12, "difficulty": {}}
+        conf.update(goals)
+        eng, clock, logs = make(acc, goals=conf)
+        eng.hunts, eng.tasks = GOAL_HUNTS, GOAL_TASKS
+        return eng, clock, logs
+
+    def test_task_uses_its_difficulty(self):
+        acc = FakeAccount(phase="city")
+        acc.task_rows = {"Restos de Rotworm": "active"}
+        acc.task_active = [{"name": "Restos de Rotworm", "have": 0, "need": 250, "deliver": False}]
+        eng, clock, logs = self.make(acc, difficulty={"Restos de Rotworm": "Difícil"})
+        for _ in range(3):
+            eng.tick(acc)
+        self.assertEqual(acc.calls[-1], ("start_hunt", "Rotworms", "Difícil"))
+
+    def test_same_hunt_wrong_difficulty_restarts(self):
+        acc = FakeAccount(phase="hunting", tracker=["Carrion Worm", "Rotworm"])
+        acc.st.difficulty = "Normal"
+        acc.bestiary = {}
+        eng, clock, logs = self.make(acc, bestiary=["Rotworm"], difficulty={"Rotworm": "Fácil"})
+        for _ in range(5):
+            eng.tick(acc)
+        self.assertIn(("start_hunt", "Rotworms", "Fácil"), acc.calls)
+        self.assertTrue(any("trocando a dificuldade" in line for line in logs))
+        n = names(acc).count("start_hunt")
+        eng.tick(acc)
+        eng.tick(acc)
+        self.assertEqual(names(acc).count("start_hunt"), n)       # ja na certa: nao troca de novo
+
+    def test_cyclopedia_bestiary_completes_goal(self):
+        acc = FakeAccount(phase="city")
+        acc.bestiary = {"rotworm": [500, 500]}
+        eng, clock, logs = self.make(acc, bestiary=["Rotworm", "Bat"])
+        for _ in range(4):
+            eng.tick(acc)
+        self.assertIn("read_bestiary", names(acc))
+        self.assertTrue(any("bestiary rotworm completo" in line for line in logs))
+        self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Cyclops"))
 
 
 if __name__ == "__main__":

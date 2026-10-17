@@ -35,6 +35,8 @@ DEFAULTS = {
         "bestiary": [],                   # criaturas, na ordem
         "level_over": 10,                 # ate quantos levels acima do recomendado da caça a party pode ir
         "check_minutes": 10,
+        "difficulty": {},                 # task/criatura -> dificuldade (vazio = a da aba Regras)
+        "bestiary_minutes": 30,           # rele os abates na Cyclopedia (o rastreador some com task ativa)
     },
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s

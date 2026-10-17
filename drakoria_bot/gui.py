@@ -26,6 +26,7 @@ PHASES = {"hunting": "Caçando", "house": "Treinando (house)", "house_idle": "Na
           "error": "Erro / reconectando", "unknown": "?", "-": "-"}
 AUTO = "Automática (Melhor escolha do jogo)"
 MODES = {"hunt": "Caçar sempre", "watch": "Só vigiar (relogin, avisos, loot)"}
+DEFAULT_DIFF = "Padrão"
 PREY_MODES = {"budget": "Até X de ouro por dia", "until_found": "Até achar (sem limite diário)"}
 AUTO_SELL = {"auto": "Automático (liga se for Premium)", "on": "Sempre ligado", "off": "Desligado (vender pelo bot)"}
 MAX_LOG_LINES = 400
@@ -337,12 +338,12 @@ class App:
         box.pack(fill="both", expand=True)
         done = self.memory.get("task_rows") or {}
         chosen = set(g["tasks"])
+        self.diff_menus = {}
         for task in self.task_list:
             var = tk.BooleanVar(value=task["name"] in chosen)
             mark = "✓ " if done.get(task["name"]) == "done" else ("▶ " if done.get(task["name"]) == "active" else "")
             text = f"{mark}{task['name']}  ·  {task['amount']} {task['item']}  ·  Lv {task['level']}"
-            ctk.CTkCheckBox(box, text=text, variable=var, fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
-                            font=("Segoe UI", 11), command=self._save_goal_tasks).pack(anchor="w", pady=1)
+            self._goal_row(box, task["name"], text, var, self._save_goal_tasks)
             self.task_vars[task["name"]] = var
         ctk.CTkLabel(inner.tab("Bestiary"), text="Marque as criaturas: o bot caça onde ela aparece até completar e passa pra próxima.",
                      text_color=MUTED, wraplength=380, justify="left").pack(anchor="w", padx=4)
@@ -360,10 +361,48 @@ class App:
             hunt = creatures[creature]
             var = tk.BooleanVar(value=creature.casefold() in chosen)
             mark = "✓ " if goals.bestiary_done(creature, progress) else ""
-            ctk.CTkCheckBox(box, text=f"{mark}{creature}  ·  {hunt['name']} (Lv {hunt['level']})", variable=var,
-                            fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT, font=("Segoe UI", 11),
-                            command=self._save_goal_beasts).pack(anchor="w", pady=1)
+            self._goal_row(box, creature, f"{mark}{creature}  ·  {hunt['name']} (Lv {hunt['level']})", var,
+                           self._save_goal_beasts)
             self.beast_vars[creature] = var
+
+    def _goal_row(self, box, key, text, var, on_save):
+        """Linha: checkbox + seletor de dificuldade (so' aparece marcada, pra a lista ficar leve)."""
+        row = ctk.CTkFrame(box, fg_color="transparent")
+        row.pack(fill="x", pady=1)
+
+        def toggled():
+            self._show_diff(row, key, var.get())
+            on_save()
+
+        ctk.CTkCheckBox(row, text=text, variable=var, fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
+                        font=("Segoe UI", 11), command=toggled).pack(side="left")
+        if var.get():
+            self._show_diff(row, key, True)
+
+    def _show_diff(self, row, key, show):
+        menu = self.diff_menus.pop(key, None)
+        if menu is not None:
+            menu.destroy()
+        if not show:
+            return
+        current = (self.cfg["goals"].get("difficulty") or {}).get(key) or DEFAULT_DIFF
+        menu = ctk.CTkOptionMenu(row, values=[DEFAULT_DIFF] + config.DIFFICULTIES, width=88, height=22,
+                                 font=("Segoe UI", 10), fg_color=PANEL_ALT, button_color=BORDER,
+                                 button_hover_color=ACCENT_HOVER, dropdown_fg_color=PANEL_ALT, text_color=TEXT,
+                                 dynamic_resizing=False, command=lambda v, k=key: self._set_goal_diff(k, v))
+        menu.set(current)
+        menu.pack(side="right", padx=(4, 6))
+        self.diff_menus[key] = menu
+
+    def _set_goal_diff(self, key, value):
+        diffs = dict(self.cfg["goals"].get("difficulty") or {})
+        if value == DEFAULT_DIFF:
+            diffs.pop(key, None)
+        else:
+            diffs[key] = value
+        self.cfg["goals"]["difficulty"] = diffs
+        self.save()
+        self.log(f"dificuldade de {key}: {value}")
 
     def _save_over(self):
         try:
