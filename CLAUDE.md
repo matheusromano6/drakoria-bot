@@ -220,3 +220,6 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   `.cyclopedia-tab` Bestiário -> cada `.bestiary-class-tile` com conhecidas > 0 -> titles `.bestiary-creature`
   'Rotworm · 421 / 500 kills' -> Voltar. Necessario porque com task ativa o rastreador da caça mostra so' as tasks.
   Validado ao vivo 17/10: 8 criaturas lidas (Rotworm 489/500, Ghoul 1050/500...).
+- ENTREGA VALIDADA 17/10 ~20:30: task pronta = `.tibia-task-active.ready` (linha 'have / need · pronta para entregar')
+  com `.tibia-button.small.green` 'Entregar' -> deliver_task: entrega na hora, SEM confirmacao; TP 10 -> 20, Concluidas
+  2/51, linha vira 'done'. Leitura do progresso aceita o sufixo '· pronta para entregar'.

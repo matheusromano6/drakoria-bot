@@ -77,7 +77,7 @@ TASKS_JS = r"""() => {
     rows[name] = cls.includes('claimed') ? 'done' : cls.includes('accepted') ? 'active' : cls.includes('locked') ? 'locked' : 'available';
   });
   const active = [...document.querySelectorAll('.tibia-tasks-active .tibia-task-active')].map(a => {
-    const l = lines(a); const pm = l.map(x => x.match(/^([\d.]+)\s*\/\s*([\d.]+)$/)).find(Boolean);
+    const l = lines(a); const pm = l.map(x => x.match(/^([\d.]+)\s*\/\s*([\d.]+)(\s|$)/)).find(Boolean);
     const deliver = [...a.querySelectorAll('button')].find(b => !b.classList.contains('tibia-task-cancel'));
     const have = pm ? +pm[1].replace(/\./g, '') : 0, need = pm ? +pm[2].replace(/\./g, '') : 0;
     return {name: l[0], have, need, deliver: !!deliver && !deliver.disabled, deliverText: deliver ? deliver.innerText.trim() : ''};
