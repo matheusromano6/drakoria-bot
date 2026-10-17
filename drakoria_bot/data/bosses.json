@@ -1,0 +1,569 @@
+[
+ {
+  "name": "Black Vixen",
+  "level": 50,
+  "category": "Archfoe",
+  "hp": 6400,
+  "place": "Lycanthrope Grounds (Cormaya)"
+ },
+ {
+  "name": "Bloodback",
+  "level": 50,
+  "category": "Archfoe",
+  "hp": 10400,
+  "place": "Lycanthrope Grounds (Edron)"
+ },
+ {
+  "name": "Shadowpelt",
+  "level": 50,
+  "category": "Archfoe",
+  "hp": 12000,
+  "place": "Lycanthrope Grounds (Cormaya)"
+ },
+ {
+  "name": "Sharpclaw",
+  "level": 50,
+  "category": "Archfoe",
+  "hp": 6600,
+  "place": "Lycanthrope Grounds (Edron)"
+ },
+ {
+  "name": "Inkwing",
+  "level": 100,
+  "category": "Bane",
+  "hp": 24000,
+  "place": "Local não registrado"
+ },
+ {
+  "name": "Wrathful Archivist",
+  "level": 100,
+  "category": "Archfoe",
+  "hp": 30000,
+  "place": "Local não registrado"
+ },
+ {
+  "name": "Sugar Daddy",
+  "level": 150,
+  "category": "Bane",
+  "hp": 19000,
+  "place": "Chocolate Mines"
+ },
+ {
+  "name": "Irgix The Flimsy",
+  "level": 180,
+  "category": "Archfoe",
+  "hp": 48000,
+  "place": "Netherworld"
+ },
+ {
+  "name": "Unaz the Mean",
+  "level": 180,
+  "category": "Archfoe",
+  "hp": 56000,
+  "place": "Netherworld"
+ },
+ {
+  "name": "Vok the Freakish",
+  "level": 180,
+  "category": "Archfoe",
+  "hp": 64000,
+  "place": "Netherworld"
+ },
+ {
+  "name": "Ancient Lion Knight",
+  "level": 200,
+  "category": "Reward Boss",
+  "hp": 36400,
+  "place": "Bounac"
+ },
+ {
+  "name": "Blight Mariner",
+  "level": 200,
+  "category": "Archfoe",
+  "hp": 33000,
+  "place": "Local não registrado"
+ },
+ {
+  "name": "Drume",
+  "level": 200,
+  "category": "Archfoe",
+  "hp": 70000,
+  "place": "Bounac"
+ },
+ {
+  "name": "Faceless Bane",
+  "level": 200,
+  "category": "Archfoe",
+  "hp": 56000,
+  "place": "Buried Cathedral"
+ },
+ {
+  "name": "Gaffir",
+  "level": 200,
+  "category": "Bane",
+  "hp": 96000,
+  "place": "Cobra Bastion"
+ },
+ {
+  "name": "Grand Canon Dominus",
+  "level": 200,
+  "category": "Bane",
+  "hp": 30000,
+  "place": "Falcon Bastion"
+ },
+ {
+  "name": "Grand Chaplain Gaunder",
+  "level": 200,
+  "category": "Bane",
+  "hp": 36000,
+  "place": "Falcon Bastion"
+ },
+ {
+  "name": "Grand Commander Soeren",
+  "level": 200,
+  "category": "Bane",
+  "hp": 34000,
+  "place": "Falcon Bastion"
+ },
+ {
+  "name": "Guard Captain Quaid",
+  "level": 200,
+  "category": "Bane",
+  "hp": 110000,
+  "place": "Cobra Bastion"
+ },
+ {
+  "name": "Jaul",
+  "level": 200,
+  "category": "Bane",
+  "hp": 180000,
+  "place": "Ancestorial Grounds"
+ },
+ {
+  "name": "Lloyd",
+  "level": 200,
+  "category": "Archfoe",
+  "hp": 130000,
+  "place": "Cosmic Chamber"
+ },
+ {
+  "name": "Preceptor Lazare",
+  "level": 200,
+  "category": "Bane",
+  "hp": 30000,
+  "place": "Falcon Bastion"
+ },
+ {
+  "name": "Sir Leonard",
+  "level": 200,
+  "category": "Bane",
+  "hp": 44000,
+  "place": "Book World"
+ },
+ {
+  "name": "Sir Leopold",
+  "level": 200,
+  "category": "Nemesis",
+  "hp": 162000,
+  "place": "Book World"
+ },
+ {
+  "name": "Timira the Many-Headed",
+  "level": 200,
+  "category": "Archfoe",
+  "hp": 150000,
+  "place": "Emerald Gardens"
+ },
+ {
+  "name": "Ratmiral Blackwhiskers",
+  "level": 250,
+  "category": "Archfoe",
+  "hp": 440000,
+  "place": "The Wreckoning"
+ },
+ {
+  "name": "Scarlett Etzel",
+  "level": 250,
+  "category": "Archfoe",
+  "hp": 90000,
+  "place": "Cobra Bastion"
+ },
+ {
+  "name": "The Dread Maiden",
+  "level": 250,
+  "category": "Archfoe",
+  "hp": 360000,
+  "place": "Zarganash"
+ },
+ {
+  "name": "The Fear Feaster",
+  "level": 250,
+  "category": "Archfoe",
+  "hp": 360000,
+  "place": "Zarganash"
+ },
+ {
+  "name": "The Monster",
+  "level": 270,
+  "category": "Archfoe",
+  "hp": 90000,
+  "place": "Deeper Ingol"
+ },
+ {
+  "name": "Alptramun",
+  "level": 300,
+  "category": "Nemesis",
+  "hp": 640000,
+  "place": "Dream Scar"
+ },
+ {
+  "name": "Anomaly",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 580000,
+  "place": "The Void (Ankrahmun)"
+ },
+ {
+  "name": "Count Vlarkorth",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 600000,
+  "place": "Edron"
+ },
+ {
+  "name": "Duke Krule",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 580000,
+  "place": "Ancient Temple"
+ },
+ {
+  "name": "Earl Osam",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 600000,
+  "place": "Cormaya"
+ },
+ {
+  "name": "Eradicator",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 580000,
+  "place": "The Void (Ankrahmun)"
+ },
+ {
+  "name": "Ghulosh",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 600000,
+  "place": "Secret Library Fire Section"
+ },
+ {
+  "name": "Gorzindel",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 700000,
+  "place": "Secret Library Fire Section"
+ },
+ {
+  "name": "Izcandar the Banished",
+  "level": 300,
+  "category": "Nemesis",
+  "hp": 640000,
+  "place": "Dream Scar"
+ },
+ {
+  "name": "Lokathmor",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 600000,
+  "place": "Secret Library Energy Section"
+ },
+ {
+  "name": "Lord Azaram",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 600000,
+  "place": "Ghostlands"
+ },
+ {
+  "name": "Maxxenius",
+  "level": 300,
+  "category": "Nemesis",
+  "hp": 640000,
+  "place": "Dream Scar"
+ },
+ {
+  "name": "Mazoran",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 580000,
+  "place": "Grounds of Fire (Infernatil)"
+ },
+ {
+  "name": "Mazzinor",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 700000,
+  "place": "Secret Library Earth Section"
+ },
+ {
+  "name": "Mitmah Vanguard",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 100000,
+  "place": "Iksupan Undercity"
+ },
+ {
+  "name": "Outburst",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 580000,
+  "place": "The Void (Ankrahmun)"
+ },
+ {
+  "name": "Rupture",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 580000,
+  "place": "The Void (Zao)"
+ },
+ {
+  "name": "Shulgrax",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 580000,
+  "place": "Grounds of Damnation (Tafariel)"
+ },
+ {
+  "name": "Sir Baeloc",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 300000,
+  "place": "Darashia Catacombs"
+ },
+ {
+  "name": "The Baron from Below",
+  "level": 300,
+  "category": "Bane",
+  "hp": 700000,
+  "place": "Deep Hub Magma Dungeon"
+ },
+ {
+  "name": "The Count of the Core",
+  "level": 300,
+  "category": "Bane",
+  "hp": 700000,
+  "place": "Deep Hub Crystal Dungeon"
+ },
+ {
+  "name": "The Duke of the Depths",
+  "level": 300,
+  "category": "Bane",
+  "hp": 700000,
+  "place": "Deep Hub Fungus Dungeon"
+ },
+ {
+  "name": "The Pale Worm",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 870000,
+  "place": "Zarganash"
+ },
+ {
+  "name": "The Unwelcome",
+  "level": 300,
+  "category": "Archfoe",
+  "hp": 600000,
+  "place": "Zarganash"
+ },
+ {
+  "name": "Brain Head",
+  "level": 350,
+  "category": "Archfoe",
+  "hp": 460000,
+  "place": "Brain Grounds"
+ },
+ {
+  "name": "Grand Master Oberon",
+  "level": 350,
+  "category": "Archfoe",
+  "hp": 500000,
+  "place": "Falcon Bastion"
+ },
+ {
+  "name": "Arbaziloth",
+  "level": 400,
+  "category": "Archfoe",
+  "hp": 720000,
+  "place": "Castle Catacombs"
+ },
+ {
+  "name": "King Zelos",
+  "level": 400,
+  "category": "Archfoe",
+  "hp": 960000,
+  "place": "Isle of Merriment"
+ },
+ {
+  "name": "Malofur Mangrinder",
+  "level": 400,
+  "category": "Nemesis",
+  "hp": 640000,
+  "place": "Dream Scar"
+ },
+ {
+  "name": "Soul of Dragonking Zyrtarch",
+  "level": 400,
+  "category": "Archfoe",
+  "hp": 300000,
+  "place": "Temple Complex"
+ },
+ {
+  "name": "Bone Overlord",
+  "level": 500,
+  "category": "Archfoe",
+  "hp": 1000000,
+  "place": "Local não registrado"
+ },
+ {
+  "name": "Court Warlock",
+  "level": 500,
+  "category": "Archfoe",
+  "hp": 240000,
+  "place": "Isle of Ada"
+ },
+ {
+  "name": "The Nightmare Beast",
+  "level": 500,
+  "category": "Archfoe",
+  "hp": 1100000,
+  "place": "Dream Scar"
+ },
+ {
+  "name": "The Scourge of Oblivion",
+  "level": 500,
+  "category": "Archfoe",
+  "hp": 1300000,
+  "place": "Isle of Merriment"
+ },
+ {
+  "name": "Urmahlullu the Weakened",
+  "level": 500,
+  "category": "Archfoe",
+  "hp": 1000000,
+  "place": "Green Belt"
+ },
+ {
+  "name": "World Devourer",
+  "level": 500,
+  "category": "Nemesis",
+  "hp": 1000000,
+  "place": "Isle of Merriment"
+ },
+ {
+  "name": "Goshnar's Cruelty",
+  "level": 600,
+  "category": "Archfoe",
+  "hp": 1100000,
+  "place": "Furious Crater"
+ },
+ {
+  "name": "Goshnar's Greed",
+  "level": 600,
+  "category": "Archfoe",
+  "hp": 1100000,
+  "place": "Mirrored Nightmare"
+ },
+ {
+  "name": "Goshnar's Hatred",
+  "level": 600,
+  "category": "Archfoe",
+  "hp": 1100000,
+  "place": "Rotten Wasteland"
+ },
+ {
+  "name": "Goshnar's Malice",
+  "level": 600,
+  "category": "Archfoe",
+  "hp": 1100000,
+  "place": "Claustrophobic Inferno"
+ },
+ {
+  "name": "Goshnar's Spite",
+  "level": 600,
+  "category": "Archfoe",
+  "hp": 1100000,
+  "place": "Ebb and Flow"
+ },
+ {
+  "name": "Magma Bubble",
+  "level": 600,
+  "category": "Archfoe",
+  "hp": 600000,
+  "place": "Sparkling Pools"
+ },
+ {
+  "name": "The Primal Menace",
+  "level": 600,
+  "category": "Reward Boss",
+  "hp": 800000,
+  "place": "Monster Graveyard"
+ },
+ {
+  "name": "The Rootkraken",
+  "level": 600,
+  "category": "Archfoe",
+  "hp": 700000,
+  "place": "Podzilla Bottom"
+ },
+ {
+  "name": "Chagorz",
+  "level": 800,
+  "category": "Archfoe",
+  "hp": 900000,
+  "place": "Gloom Pillars"
+ },
+ {
+  "name": "Goshnar's Megalomania Green",
+  "level": 800,
+  "category": "Reward Boss",
+  "hp": 1240000,
+  "place": "Local não registrado"
+ },
+ {
+  "name": "Ichgahal",
+  "level": 800,
+  "category": "Archfoe",
+  "hp": 1800000,
+  "place": "Putrefactory"
+ },
+ {
+  "name": "Murcion",
+  "level": 800,
+  "category": "Archfoe",
+  "hp": 1800000,
+  "place": "Jaded Roots"
+ },
+ {
+  "name": "Vemiath",
+  "level": 800,
+  "category": "Archfoe",
+  "hp": 1800000,
+  "place": "Darklight Core"
+ },
+ {
+  "name": "Vladrukh",
+  "level": 1000,
+  "category": "Archfoe",
+  "hp": 780000,
+  "place": "Bloody Tusks"
+ },
+ {
+  "name": "Bakragore",
+  "level": 1200,
+  "category": "Nemesis",
+  "hp": 2400000,
+  "place": "Blood Vestibule"
+ }
+]

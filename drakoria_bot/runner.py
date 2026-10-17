@@ -1,0 +1,57 @@
+"""Roda o motor numa thread (o Playwright precisa ser criado e usado na MESMA thread).
+A interface so' le o 'snapshot' e liga/desliga."""
+import os
+import threading
+
+from .engine import Engine
+from .idledeck import Pool
+from .credentials import Credentials
+from .memory import Memory
+from .paths import app_dir
+
+ROOT = app_dir()
+
+
+class Runner:
+    def __init__(self, cfg, log):
+        self.cfg = cfg                 # o MESMO dict da interface: mudancas valem na hora
+        self.log = log
+        self.thread = None
+        self.stop_event = threading.Event()
+        self.engine = None
+        self.connected = False
+
+    @property
+    def running(self):
+        return self.thread is not None and self.thread.is_alive()
+
+    @property
+    def snapshot(self):
+        return self.engine.snapshot if self.engine else None
+
+    def start(self):
+        if self.running:
+            return
+        self.stop_event.clear()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        self.stop_event.set()
+
+    def _run(self):
+        pool = Pool(self.cfg["cdp_url"], self.log)
+        try:
+            pool.open(launch=True, stop=self.stop_event)
+            self.connected = True
+            self.engine = Engine(pool.refresh(), self.cfg, self.log, refresh=pool.refresh,
+                                 credentials=Credentials(os.path.join(ROOT, "credentials.json")),
+                                 memory=Memory(os.path.join(ROOT, "memory.json")))
+            self.log("bot iniciado")
+            self.engine.run(self.stop_event)
+        except Exception as error:
+            self.log(f"parado por erro: {error}")
+        finally:
+            self.connected = False
+            pool.close()
+            self.log("bot parado")

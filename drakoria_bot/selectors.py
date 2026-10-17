@@ -1,0 +1,64 @@
+"""TODOS os seletores/textos do Drakoria (mapeados ao vivo em 16/10/2026, build 2030-online416).
+O jogo muda textos com atualizacoes: preferir classes estaveis e regex com variantes."""
+
+GAME_HOST = "drakoriaidle.com.br"
+
+# cena central: a classe diz o estado
+SCENE = "main.content > section"
+SCENE_HUNTING = "spatial-battle-stage"          # caçando
+SCENE_HOUSE = "house-scene"                     # na house (treino no dummy)
+SCENE_CITY = "city-temple-scene"                # Thais / parado
+
+# menu (itens escondidos por aba: clicar via JS)
+NAV = "button.nav-item[data-nav='{}']"          # hunt, bosses, party, city, inventory...
+
+# cidade
+CITY_GO = "button.cp-btn-go"                    # "Caçar em <hunt>"
+CITY_DEST = ".cp-dest"                          # title "Próximo destino: X · Mundo · Level N+"
+
+# escolher hunt
+PICKER = "section.hunt-picker-window"
+PICKER_CLOSE = "[aria-label='Fechar a escolha de hunt']"
+PICKER_SEARCH = "input[aria-label^='Buscar hunt']"
+PICKER_BAND_ALL = ".hw-band"                    # 1o = Todas
+PICKER_TILE = ".hw-tile"
+PICKER_TILE_MAIN = "button.hw-tile-main"
+PICKER_BEST = ".hw-fit.fit-best"                # "Melhor escolha" do jogo pro level da party
+PICKER_START = "button.hw-start:not(.hw-start-offline)"   # "Caçada online"
+
+# preparar caçada (dificuldade)
+DIFF_WINDOW = ".hcd-window"
+DIFF_OPTION = ".hcd-option"                     # texto comeca com o nome (Fácil/Normal/Difícil/Insano...)
+DIFF_CONFIRM = ".hcd-confirm"                   # "Entrar na caçada"
+
+# caçando
+HUNT_EXIT = "button.cp-btn.danger"              # title "Retornar para Thais"
+HUNT_TRACKER_ROW = ".bestiary-tracker-row"      # title "Troll: 4 de 250 kills · faltam 246..."
+HUNT_DIFFICULTY = ".world-hunt-difficulty-control"
+
+# house / treino
+HOUSE_STOP = ".house-hud-btn.danger"            # "Parar" (title "Parar treino")
+
+# loot pouch
+LOOT_OPEN = "button[title^='Abrir a Loot Pouch']"
+LOOT_WINDOW = ".loot-pouch-window"
+LOOT_SELL_ALL = ".loot-sell-all"                # "Vender tudo agora"
+LOOT_PROTECT_LABEL = "Proteger drops de boss"
+LOOT_AUTOSELL_LABEL = "Auto Sell"
+
+# janelas que aparecem sozinhas
+OFFLINE_REPORT = ".op-window"                   # "Sua Party continuou treinando"
+OFFLINE_COLLECT = ".op-collect"                 # "Coletar e continuar"
+# botoes "inofensivos" pra fechar avisos/relatorios/morte
+DISMISS_TEXT = r"^(Coletar e continuar|Continuar|OK|Ok|Fechar|Entendi|Confirmar)$"
+
+# login (pagina inicial do site)
+LOGIN_OPEN_TEXT = r"^(Entrar|Já tenho conta)$"
+LOGIN_SUBMIT_TEXT = r"Entrar no jogo"
+LOGIN_PASSWORD = "input[type=password]"
+
+# nunca clicar
+NEVER = [".online-logout-top-button", ".training-offline-menu-item", ".logout-menu-item", "[data-nav='gm']"]
+
+WINDOW_CLOSE = (".tibia-window-controls button, .tibia-window button[title='Fechar'], "
+                ".workspace-window button[title='Fechar'], .workspace-window [aria-label='Fechar']")

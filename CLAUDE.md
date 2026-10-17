@@ -1,0 +1,135 @@
+# CLAUDE.md - drakoria_bot
+
+Bot do **Drakoria** que roda **dentro do IdleDeck**, no mesmo estilo dos bots do OtxIdle e do Huntera. Projeto NOVO e
+SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/huntera-bot` (versoes, releases, config).
+
+## Ponto de partida
+- BASE = o bot do OtxIdle (C:\Users\Pichau\otxidle-bot). Leia o CLAUDE.md de la inteiro antes de comecar: tem a arquitetura,
+  o processo de release e as licoes de 6 dias de uso real. O do Huntera (C:\Users\Pichau\huntera-bot) e' o modelo mais antigo.
+- O que da pra REAPROVEITAR quase igual (so trocar nomes/host): `idledeck.py` (CDP porta 9224, so paginas do jogo),
+  `launcher.py` (abrir o IdleDeck com a porta; NUNCA matar o IdleDeck a forca), `updater.py` (botao Atualizar via GitHub
+  releases, asset de nome fixo), `paths.py`, `runner.py` (thread), `memory.py`, `credentials.py` (logins com DPAPI),
+  `config.py` (merge com padroes), `gui.py` (CustomTkinter + bandeja + log em arquivo + `--iniciar`), build com PyInstaller.
+- O que e' ESPECIFICO do jogo e precisa ser mapeado AO VIVO antes de codar: `selectors.py`, `account.py` (leitura de estado
+  num unico evaluate + acoes), e as regras do `engine.py`/`tasks.py`.
+- Regra de ouro: so agir em paginas do Drakoria; NUNCA tocar nas paginas do OtxIdle/Huntera (os outros bots rodam no mesmo
+  IdleDeck/porta). Mapear primeiro SO LENDO; o usuario prefere mapear e depois implementar, com objetividade.
+
+## Checklist de mapeamento (o que o bot do OtxIdle precisou - conferir se existe no Drakoria)
+1. Identidade/HUD: nome, level, vocacao, ouro, capacidade (livre e maxima), stamina (caça e treino), party.
+2. Estados: caçando / saindo / cidade / treinando / deslogado (tela de personagens) / login / pagina inicial / erro.
+3. Ciclo de capacidade: sair da caça -> vender (fluxo completo, confirmacoes) -> voltar pra mesma caça.
+4. Caças: lista (nome, level recomendado/minimo, criaturas), busca, iniciar. Ler a lista inteira 1x e guardar (hunts.json).
+5. Party: criar, convidar (pelo nome?), aceitar convite, o que acontece quando o lider/membro sai, regra de level.
+6. Treino/stamina: como iniciar/encerrar, arma de exercicio, o que acontece com stamina baixa.
+7. Telas que travam: novidades/patch notes, avisos, morte, relatorio de caça, recompensa diaria.
+8. Quedas: server save, login (o bot NUNCA digita senha de conta real por conta propria: o usuario cadastra na aba Login),
+   tela de personagens, desconexao (notificacao), pagina de erro do servidor, tela travada -> recarregar.
+9. Extras do jogo: tasks/bestiary/blessings/etc. (so depois do basico rodando).
+
+## Licoes que ja custaram caro no OtxIdle (evitar desde o inicio)
+- Textos e seletores do jogo MUDAM com atualizacoes (botao traduzido, campo de busca novo): seletores centralizados e
+  regex com variantes; nunca esperar 30s por um botao que pode nao existir.
+- Campo de busca: escopar na janela certa (outra janela aberta "roubava" o input); .fill() pode nao disparar o filtro (DIGITAR).
+- Ler o estado depois de clicar com espera pela MUDANCA (lista velha = clique na carta errada).
+- Estado que precisa sobreviver a reinicio (treino em grupo, bloqueios, logins por personagem) vai pro memory.json.
+- Nunca esconder erro de build; conferir que o exe de dist nao esta em uso e que o exe gerado e' novo (icone/horario).
+  Build numa pasta separada (release/) e so depois trocar o exe em dist.
+- Testes com contas falsas que simulam o jogo; testes NUNCA gravam arquivos reais; nomes reais nao entram nos testes.
+- Escolhas do usuario (caça fixa, modo por conta) mandam: o bot nao "corrige" escolhas por conta propria.
+
+## Ambiente deste PC
+- Python 3.12 em %LOCALAPPDATA%\Programs\Python\Python312 (fora do PATH: chamar pelo caminho completo), com playwright,
+  customtkinter, pillow, pystray, pyinstaller. Git em C:\Program Files\Git\cmd, gh em C:\Program Files\GitHub CLI (logado
+  como matheusromano6). Commits com -c user.name="Matheus Romano" -c user.email="matheus.romano@manyminds.com.br".
+- Usuario fala portugues.
+
+## A preencher no mapeamento
+- URL do jogo / host das paginas no IdleDeck, contas abertas, layout ideal da interface do novo bot.
+
+## Primeira olhada (16/10/2026 ~20:40, ao vivo, so leitura) - Drakoria Idle v1.7, build 2030-online416
+- Host: `https://jogo.drakoriaidle.com.br/` (1 aba no IdleDeck; worker `background-combat-worker.js` = combate roda em background).
+- DIFERENCA PRINCIPAL: UMA conta (login MRomano) controla a PARTY INTEIRA de 4 numa unica pagina: MRKina (Knight, TANK, lider),
+  MRPally (DPS), MRSorc (DPS), MRDruid (SUP), todos lv 8. Sem convite/aceite entre abas: party e' do proprio jogo
+  ("Lider da Party: MRKina - Lideranca automatica · Knight preferencial"). O modelo do OtxIdle (1 conta por aba) NAO se aplica.
+- HUD (classes estaveis, prefixos `drk-`, `td-`, `tcb-`, `hw-`): topbar ouro `.topbar-gold-balance` (500), Drako Coins
+  `.topbar-drako-balance`; painel Party `.td-member` (`.td-member-main` "Nome ROLE Lv 8 · 0% hp mana", `.td-member-bag`);
+  Backpack "2/80" (slots), Loot Pouch, Supply Pouch (30). Skills por aba `.td-tab` EK/RP/MS/ED. "Reserva offline hh:mm:ss".
+- Menu: `.header-menu-launcher` abre o menu; itens `button.nav-item[data-nav=...]` (hunt, bosses, quests, bestiary, party,
+  inventory=Banco, market, city=Loja, guild, ranking, settings, gm). Itens de outras abas do menu ficam hidden: clicar via JS.
+  Barra rapida `.quick-access-button` (title "Caçar (tecla 1)" ... "Cyclopedia (tecla 8)").
+- Escolher Hunt (`data-nav=hunt`): `section.hunt-picker-window`, fecha com `[aria-label="Fechar a escolha de hunt"]`.
+  68 caças; busca `input[aria-label^="Buscar hunt"]` (nome/cidade/criatura/level); filtros `.hw-band` (Todas, Recomendadas,
+  1-49...); ordenar select (Melhor para a Party...). Card `.hw-tile` (`.is-selected`/`.is-above`) > `button.hw-tile-main`
+  (strong=nome, `.hw-lv` "Lv 5+", `.hw-fit` "Melhor escolha"/"Desafio", tag bonus `.hv-tag`). Detalhe `.hw-detail`:
+  criaturas `.hw-creature[title="Ficha: X"]`, level recomendado, recordes, "Maestria do offline" (2.000 abates, 200 sem
+  derrota total -> libera caçada offline). INICIAR: `button.hw-start` "Caçada online" (verde) / `.hw-start-offline` (disabled
+  ate a maestria). Criatura do Dia `.bc-panel` (XP x2) com a caça dela.
+- Personagem (`data-nav=party`, janela Cyclopedia aba Personagem): sub-abas por membro; Atributos: HP, Mana, CAPACIDADE (470
+  na Kina), velocidade. Cap e' por personagem; loot vai pra Loot Pouch/backpack da party.
+- Loot Pouch (`button[title^="Abrir a Loot Pouch"]`, `.loot-pouch-window`): checkbox "Proteger drops de boss" (on) e
+  "AUTO SELL" (off), `.loot-sell-all` "Vender tudo agora", listas "Nao coletar" e "Nao vender". O JOGO JA TEM AUTO SELL:
+  provavelmente dispensa o ciclo sair->vender->voltar do OtxIdle (confirmar com o usuario antes de ligar).
+- Loja (`data-nav=city`, `.cs-window`) e' so COMPRA (armas, Loja Magica, Treinamento, Cripta, Bigorna, Promotion).
+- Treino: estava "Treinando no dummy" na house Seawatch: HUD `.house-hud-btn.danger` "Parar" (title "Parar treino"),
+  `.house-hud-tool` Dummy/Decorar, exercise weapons `.house-exercise-slot` por membro (EK/RP/MS/ED, 1.5x, `.empty`).
+  Menu: `.training-online-menu-item` "Treino Online (na house 1.5x/2.5x)", `.training-offline-menu-item` "Treino Offline".
+- ATENCAO: clicar `.training-offline-menu-item` (Claude, 20:48) DESLOGOU a conta -> pagina inicial com modal de login
+  (Usuario preenchido "MRomano", senha vazia, "Lembrar meu acesso", "Entrar no jogo", Google). Treino Offline = sair e treinar
+  offline. NUNCA clicar nele no mapeamento. Login: o usuario faz (ou cadastra na aba Login do bot).
+- Aviso de atualizacao: banner "Atualização do Drakoria - O jogo vai salvar seu progresso e atualizar em N s" + "Atualizar
+  agora"; passou sozinho sem recarregar visivelmente.
+- `.tcb-button.online-logout-top-button` "Salvar e sair da conta" - nunca clicar. Conta tem menu GameMaster (`data-nav=gm`): nao tocar.
+- Ainda NAO mapeado: tela caçando (HUD de caça, como sair), stamina (parece ser "Reserva offline" + Premium), morte/derrota
+  total, Helper (`.helper-menu-item`, potions/runas/rotacao), Banco, tasks (Cyclopedia > Tasks).
+
+## Segunda olhada (16/10/2026 ~20:55, ao vivo, depois do relogin do usuario)
+- Ao entrar: modal `.op-window` "Sua Party continuou treinando · Progresso offline" (tempo, skills ganhas) com
+  `.op-collect` "Coletar e continuar" e "Fechamento automático em Ns" (fecha sozinho). O treino offline continuou com a conta fora.
+- ESTADOS pela `main.content > section` (classe): cidade/parado = `city-temple-scene ... city-temple-idle-stage`
+  (Thais); caçando = `spatial-battle-stage ... phase-engage`; treino na house = HUD `.house-hud-*` "Treinando no dummy".
+- Cidade: barra `.cp-toolbar`: `.cp-dest` (title "Próximo destino: Troll Cave · Mundo · Level 5+"), `button.cp-btn-go`
+  (title "Caçar em <hunt>") = caçar na ultima/escolhida; `.cp-btn[title="Escolher Hunt"]`, `[title="Ver criaturas"]`.
+- INICIAR CAÇA: `.cp-btn-go` (ou `.hw-start` no Escolher Hunt) -> modal `.hcd-window` "Prepare sua caçada": dificuldade
+  `.hcd-option` (Fácil/Normal/Difícil livres; Insano 250+, Pesadelo 450+, Inferno 700+, Impossível 1000+ = level), info
+  (criaturas no mapa, "Volta em 90 s" respawn) -> `.hcd-confirm` "Entrar na caçada" (Cancelar). Entra em ~2s.
+- Caçando: `.world-hunt-difficulty-control` "Normal 4/70 ativas ALTERAR"; `.cp-btn[title="Detalhes das criaturas"]`,
+  `[title="Trocar Hunt"]`, `.cp-btn.danger[title="Retornar para Thais"]` = SAIR da caça (nao testado ainda).
+  Rastreador `.bestiary-tracker-row` (title "Troll: 4 de 250 kills · faltam 246").
+  Sessao (painel esquerdo): XP da Party/h, Kills/h, Valor gerado/h, Lucro/h. Troll Cave lv8: ~97k XP/h party.
+  OURO entra direto no topo (500 -> 581); LOOT vai pra Loot Pouch (slots), nao enche a backpack.
+- Barras de magia por membro `.hunt-helper-slot` (6 por voc, todas `.empty` = so ataque basico); preset do Helper
+  `.abp-save` "Salvar" / `.abp-gear`. Configuracao do jogo: o bot nao deve mexer sem decisao do usuario.
+- Helper (`button[title^="Abrir o Helper"]`, `.helper-window`): presets 1-5 `.hlp-preset`, membros `.hlp-member`
+  (role-tank/dps/support), abas `.hlp-tab` Curas/Combo/Combate/Equip./Suporte; curas por HP% (Wound Cleansing), pocoes
+  (Small Health / Mana Potion por %), Remover Paralyze.
+- Tasks (quick-access "Tasks (tecla 3)", Cyclopedia > Tasks = `.workspace-window`): "Tasks de Creature Products" = COLETAR
+  ITENS (ex. Cabelos de Troll: 100 Bunch Of Troll Hair, Troll Cave Lv5+, 5.000 ouro + 5.000 XP cada? +10 TP). Lista
+  `.tibia-tasks-list > .tibia-task-row`, filtros Todas/Disponíveis/Ativas/Concluídas, botao `.tibia-button.small.green`
+  "Aceitar" (ou "Requer Lv N" disabled). Ate 2 ativas; 40 no total; itens pedidos ficam protegidos da venda automatica.
+  Resumo: Task Points, Tasks ativas 0/2, Prontas para entregar, Concluidas 0/40.
+- STAMINA: nao existe stamina de caça visivel (nada com "stamina" no DOM). Limite visto = "Reserva offline" (Premium Ouro:
+  ate 12h, carrega +2h por 1h online; os 15 min iniciais de cada saida nao gastam) - usada pela caçada/treino offline.
+- Workspace (Cyclopedia etc.) NAO e' `.tibia-window`: `.workspace-window`; fechar todas as janelas precisa cobrir as duas.
+- Deixado CAÇANDO em Troll Cave (Normal) as 20:55 pelo mapeamento (antes estava treinando no dummy).
+- Falta ver: "Retornar para Thais" (sair), Loot Pouch cheia / Auto Sell em uso, morte/derrota total, Treino Online na house
+  (como iniciar/parar o dummy), Banco, tela de login automatica (Lembrar meu acesso).
+
+## v1.0.0 (16/10/2026) - decisoes do usuario e estrutura
+- Usuario: sem stamina no jogo -> sem ida pro treino por enquanto; tasks depois; dificuldades acima de Difícil so com
+  level 250+ (mostrar todas). Level das caças e' pra 1 char: com 4 da pra ir em mais fortes (so' informacao, o bot nao usa).
+  Lista de hunts toda carregada (`drakoria_bot/data/hunts.json`, 68) e de bosses (`data/bosses.json`, 81: nome, level,
+  categoria Bane/Archfoe/Nemesis/Reward Boss, HP, local) pra fila de bosses no futuro (`config.bosses`).
+  Venda: Premium tem Auto Sell; free precisa 'Vender tudo agora'. SEMPRE garantir 'Proteger drops de boss' ligado.
+  Auto Sell 'auto' = liga se a conta for Premium (Boosts > Conta "Premium Ouro").
+  Interface: simples, leve, objetiva: abas Painel / Regras / Login / Log, janela 440x580, destaque dourado (#e0a526),
+  icone "D" dourado. Relogin automatico com 1 login (DPAPI em credentials.json).
+- Estrutura: `selectors.py`, `account.py` (READ_JS = 1 evaluate -> State; acoes start_hunt/best_hunt/stop_training/
+  loot_settings/sell_all/login/reload/dismiss_popups), `engine.py` (1 acao por tick: erro -> login -> avisos -> loot ->
+  caça), `hunts.py` (identify: caça atual pelas criaturas do rastreador, a tela de caça nao mostra o nome), `config.py`,
+  `memory.py`, `gui.py`, e copiados do OtxIdle: idledeck/launcher/updater/paths/runner/credentials.
+- `python -m drakoria_bot --status` le sem agir (validado: house, Premium, 4 membros lv 8). Testes: 39 ok.
+- Validado ao vivo so leitura: seletores da Loot Pouch (checkboxes por label, `.loot-sell-all`) e fechar janela.
+- AINDA NAO validado com o bot rodando: start_hunt pela busca, stop_training ('Parar' na house), sell_all (confirmacao?),
+  login (form da pagina inicial), troca de caça estando caçando, best_hunt.
+- Conta em treino na house + modo 'Caçar sempre' -> o bot PARA o treino e vai caçar (modo 'Só vigiar' nao mexe).

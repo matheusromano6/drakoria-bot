@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+build/
+dist/
+spec/
+config.json
+memory.json
+logs/
+release/
+credentials.json
+hunts.json
