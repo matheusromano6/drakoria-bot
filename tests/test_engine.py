@@ -22,6 +22,8 @@ class FakeAccount:
         self.prey = []          # espacos da Prey
         self.prey_lists = []    # proximas listas ao trocar
         self.closed = 0
+        self.task_rows = {}     # nome -> done|active|locked|available
+        self.task_active = []   # [{name, have, need, deliver}]
 
     def read(self):
         return copy.deepcopy(self.st)
@@ -80,6 +82,22 @@ class FakeAccount:
         slot["options"] = self.prey_lists.pop(0)
         slot["reroll"] = {"free": False, "gold": 300, "cards": False}
 
+    def read_tasks(self):
+        self._call("read_tasks")
+        active = [dict(a, ready=a.get("deliver", False)) for a in self.task_active]
+        return {"rows": dict(self.task_rows), "active": copy.deepcopy(active)}
+
+    def accept_task(self, name):
+        self._call("accept_task", name)
+        self.task_rows[name] = "active"
+        self.task_active.append({"name": name, "have": 0, "need": 100, "deliver": False})
+
+    def deliver_task(self, name):
+        self._call("deliver_task", name)
+        self.task_rows[name] = "done"
+        self.task_active = [a for a in self.task_active if a["name"] != name]
+        return "Entregar"
+
     def close_windows(self):
         self.closed += 1
 
@@ -109,6 +127,7 @@ class Clock:
 
 def make(acc, creds=None, **cfg_over):
     cfg_over.setdefault("prey", {"enabled": False})
+    cfg_over.setdefault("goals", {"enabled": False})
     cfg = config._merge(config.DEFAULTS, cfg_over)
     clock = Clock()
     logs = []
@@ -314,6 +333,78 @@ class PreyEngineTest(unittest.TestCase):
         self.acc.prey = [prey_slot(["Troll"])]
         self.run_prey()
         self.assertNotIn("read_prey", names(self.acc))
+
+
+GOAL_HUNTS = HUNTS + [{"name": "Cyclops", "level": 20, "creatures": ["Bat", "Cyclops"]},
+                      {"name": "Dragon Lair", "level": 45, "creatures": ["Dragon"]}]
+GOAL_TASKS = [{"name": "Restos de Rotworm", "creature": "Rotworm", "level": 15},
+              {"name": "Dedos de Cyclops", "creature": "Cyclops", "level": 30},
+              {"name": "Couros de Dragão", "creature": "Dragon", "level": 50}]
+
+
+class GoalsEngineTest(unittest.TestCase):
+    def make(self, acc, **goals):
+        conf = {"enabled": True, "tasks": [], "bestiary": [], "level_over": 12}
+        conf.update(goals)
+        eng, clock, logs = make(acc, goals=conf)
+        eng.hunts, eng.tasks = GOAL_HUNTS, GOAL_TASKS
+        return eng, clock, logs
+
+    def test_manual_active_task_drives_hunt(self):
+        acc = FakeAccount(phase="city")
+        acc.task_rows = {"Restos de Rotworm": "active"}
+        acc.task_active = [{"name": "Restos de Rotworm", "have": 3, "need": 250, "deliver": False}]
+        eng, clock, logs = self.make(acc)
+        eng.tick(acc)       # loot
+        eng.tick(acc)       # tasks
+        eng.tick(acc)       # caça
+        self.assertEqual(acc.calls[-1], ("start_hunt", "Rotworms", "Normal"))
+        self.assertNotIn("best_hunt", names(acc))
+
+    def test_accepts_queue_in_order_up_to_two_reachable(self):
+        acc = FakeAccount(phase="city")
+        acc.task_rows = {"Restos de Rotworm": "available", "Dedos de Cyclops": "available", "Couros de Dragão": "available"}
+        eng, clock, logs = self.make(acc, tasks=["Couros de Dragão", "Dedos de Cyclops", "Restos de Rotworm"])
+        eng.tick(acc)
+        eng.tick(acc)
+        accepted = [c[1] for c in acc.calls if c[0] == "accept_task"]
+        self.assertEqual(accepted, ["Dedos de Cyclops", "Restos de Rotworm"])    # Dragon (45) > 8+12: espera
+        eng.tick(acc)
+        self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Cyclops"))
+
+    def test_delivers_ready_and_takes_next(self):
+        acc = FakeAccount(phase="hunting", tracker=["Carrion Worm", "Rotworm"])
+        acc.task_rows = {"Restos de Rotworm": "active", "Dedos de Cyclops": "available"}
+        acc.task_active = [{"name": "Restos de Rotworm", "have": 250, "need": 250, "deliver": True}]
+        eng, clock, logs = self.make(acc, tasks=["Restos de Rotworm", "Dedos de Cyclops"])
+        eng.tick(acc)
+        eng.tick(acc)
+        self.assertIn(("deliver_task", "Restos de Rotworm"), acc.calls)
+        self.assertIn(("accept_task", "Dedos de Cyclops"), acc.calls)
+        self.assertTrue(any("task entregue" in line for line in logs))
+        eng.tick(acc)
+        eng.tick(acc)       # 2 leituras na caça errada -> troca
+        self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Cyclops"))
+
+    def test_bestiary_queue_until_goal_reached(self):
+        acc = FakeAccount(phase="city")
+        eng, clock, logs = self.make(acc, bestiary=["Rotworm", "Bat"])
+        eng.tick(acc)
+        eng.tick(acc)       # tasks (nada)
+        eng.tick(acc)
+        self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Rotworms"))
+        acc.st.tracker_titles = ["Rotworm: 500 de 500 kills · faltam 0.", "Carrion Worm: 10 de 250 kills · faltam 240."]
+        eng.tick(acc)
+        self.assertTrue(any("bestiary Rotworm completo" in line for line in logs))
+        eng.tick(acc)
+        self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Cyclops"))
+
+    def test_rule_hunt_when_no_goal(self):
+        acc = FakeAccount(phase="city")
+        eng, clock, logs = self.make(acc)
+        for _ in range(3):
+            eng.tick(acc)
+        self.assertEqual(acc.calls[-1], ("start_hunt", "Troll Cave", "Normal"))
 
 
 if __name__ == "__main__":

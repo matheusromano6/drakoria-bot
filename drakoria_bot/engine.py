@@ -4,6 +4,7 @@ import time
 
 import datetime
 
+from . import goals as G
 from . import hunts as H
 from . import prey as P
 
@@ -20,13 +21,15 @@ class Engine:
         self.credentials = credentials
         self.clock = clock
         self.hunts = H.load_hunts()
+        self.tasks = G.load_tasks()
+        self.active_tasks = (memory.get("active_tasks") if memory else None) or []
         self.cooldown = {}              # acao -> horario liberado
         self.last_ok = {}               # acao -> ultimo sucesso
         self.phase_since = (None, 0)    # (fase, desde)
         self.mismatch = 0
         self.best = None                # (level, caça) da 'Melhor escolha' do jogo
         self.prey_spent = {}            # ouro gasto trocando lista da Prey hoje (sem memory.json)
-        self.snapshot = {"state": None, "hunt": None, "target": None, "phase": "-", "action": "", "prey": []}
+        self.snapshot = {"state": None, "hunt": None, "target": None, "phase": "-", "action": "", "prey": [], "tasks": [], "goal": ""}
 
     # ------------------------------------------------------------------ util
     def _ready(self, key):
@@ -52,7 +55,39 @@ class Engine:
         mode = self.cfg["loot"]["auto_sell"]
         return st.premium if mode == "auto" else mode == "on"
 
+    def bestiary_progress(self):
+        return (self.memory.get("bestiary") if self.memory else None) or getattr(self, "_bestiary", {})
+
+    def _note_tracker(self, st):
+        """Guarda abates/meta do bestiary lidos no rastreador da caça."""
+        progress = dict(self.bestiary_progress())
+        changed = False
+        for title in st.tracker_titles:
+            parsed = G.parse_tracker_title(title)
+            if parsed:
+                name, kills, goal = parsed
+                key = name.casefold()
+                if progress.get(key) != [kills, goal]:
+                    if goal and kills >= goal and not G.bestiary_done(name, progress) and \
+                            key in [c.casefold() for c in self.cfg["goals"]["bestiary"]]:
+                        self.log(f"bestiary {name} completo ({kills}/{goal})")
+                    progress[key] = [kills, goal]
+                    changed = True
+        if changed:
+            self._bestiary = progress
+            if self.memory:
+                self.memory.set("bestiary", progress)
+
+    def goal_target(self, st):
+        goals = self.cfg.get("goals") or {}
+        return G.goal_hunt(self.active_tasks, goals.get("bestiary") or [], self.bestiary_progress(), self.tasks,
+                           self.hunts, st.level, goals.get("level_over", 10))
+
     def target_hunt(self, acc, st):
+        hunt, why = self.goal_target(st)
+        self.snapshot["goal"] = why
+        if hunt:
+            return hunt
         fixed = (self.cfg.get("hunt") or "").strip()
         if fixed:
             return fixed
@@ -128,7 +163,17 @@ class Engine:
                 self.log(f"Loot Pouch com {st.loot_items} itens: vendido tudo (ouro {st.gold})")
             return
 
-        # 5) prey (so' caçando: o tempo da prey so' corre na caça)
+        # 5) tasks de produto: entrega as prontas e aceita as proximas da fila
+        goals = self.cfg.get("goals") or {}
+        if st.phase == "hunting":
+            self._note_tracker(st)
+        if goals.get("enabled", True):
+            every = goals.get("check_minutes", 10) * 60
+            if now - self.last_ok.get("tasks", -every) >= every and self._ready("tasks"):
+                self._tasks(acc, st)
+                return
+
+        # 6) prey (so' caçando: o tempo da prey so' corre na caça)
         prey = self.cfg.get("prey") or {}
         if prey.get("enabled") and st.phase == "hunting" and current:
             every = prey.get("check_minutes", 10) * 60
@@ -136,7 +181,7 @@ class Engine:
                 self._prey(acc, st, current)
                 return
 
-        # 6) caça
+        # 7) caça
         if self.cfg["mode"] != "hunt":
             return
         target = self.target_hunt(acc, st)
@@ -211,6 +256,38 @@ class Engine:
             self.last_ok["prey"] = self.clock()
         except Exception as error:
             self._fail("prey", error)
+        finally:
+            try:
+                acc.close_windows()
+            except Exception:
+                pass
+
+    def _tasks(self, acc, st):
+        goals = self.cfg["goals"]
+        try:
+            data = acc.read_tasks()
+            for task in data["active"]:
+                if task["ready"]:
+                    text = acc.deliver_task(task["name"])
+                    self.log(f"task entregue: {task['name']} ({text})")
+                    data = acc.read_tasks()
+                    break
+            active = [a for a in data["active"] if not a["ready"]]
+            for name in G.next_tasks_to_accept(goals["tasks"], data["rows"], len(data["active"]), self.tasks,
+                                               self.hunts, st.level, goals.get("level_over", 10)):
+                acc.accept_task(name)
+                self.log(f"task aceita: {name}")
+                data = acc.read_tasks()
+            self.active_tasks = [{"name": a["name"], "ready": a["ready"], "have": a["have"], "need": a["need"]}
+                                 for a in data["active"]]
+            self.task_rows = data["rows"]
+            if self.memory:
+                self.memory.set("active_tasks", self.active_tasks)
+                self.memory.set("task_rows", data["rows"])
+            self.snapshot["tasks"] = [(a["name"], a["have"], a["need"]) for a in self.active_tasks]
+            self.last_ok["tasks"] = self.clock()
+        except Exception as error:
+            self._fail("tasks", error)
         finally:
             try:
                 acc.close_windows()

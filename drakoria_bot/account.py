@@ -19,7 +19,7 @@ READ_JS = r"""() => {
     error: /Error 10\d\d|Bad Gateway|Cloudflare|ERR_|This site can.t be reached/i.test(body.slice(0, 2000)),
     disconnected: /desconectad|conexão perdida|reconectando/i.test(body.slice(0, 4000)),
     members: [], gold: '', goldTitle: '', loot: null, backpack: '', premium: '', reserve: '', xph: '', profith: '',
-    tracker: [], kills: {}, difficulty: '', dest: '', modals: [], training: vis(document.querySelector('.house-hud-btn.danger'))};
+    tracker: [], kills: {}, trackerTitles: [], difficulty: '', dest: '', modals: [], training: vis(document.querySelector('.house-hud-btn.danger'))};
   document.querySelectorAll('.td-member-main').forEach(m => {
     const lines = txt(m).split('\n').map(s => s.trim()).filter(Boolean);
     out.members.push(lines);
@@ -36,7 +36,8 @@ READ_JS = r"""() => {
   const x = body.match(/XP da Party\/h\n([^\n]+)/); if (x) out.xph = x[1];
   const p = body.match(/Lucro\/h\n([^\n]+)/); if (p) out.profith = p[1];
   document.querySelectorAll('.bestiary-tracker-row').forEach(t => { const m = (t.title || '').match(/^([^:]+):\s*([\d.]+)/);
-    if (m) { out.tracker.push(m[1].trim()); out.kills[m[1].trim()] = +m[2].replace(/\./g, ''); } });
+    if (m) { out.tracker.push(m[1].trim()); out.kills[m[1].trim()] = +m[2].replace(/\./g, ''); }
+    if (t.title) out.trackerTitles.push(t.title); });
   out.difficulty = txt(document.querySelector('.world-hunt-difficulty-control')).split('\n')[0] || '';
   const d = document.querySelector('.cp-dest'); out.dest = d ? (d.title || '') : '';
   document.querySelectorAll('.modal, .tibia-window').forEach(w => {
@@ -68,6 +69,23 @@ PREY_JS = r"""([slotSel, creatureSel, toolSel]) => {
 }"""
 
 
+TASKS_JS = r"""() => {
+  const lines = e => (e.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
+  const rows = {};
+  document.querySelectorAll('.tibia-tasks-list .tibia-task-row').forEach(r => {
+    const cls = String(r.className); const name = lines(r)[0];
+    rows[name] = cls.includes('claimed') ? 'done' : cls.includes('accepted') ? 'active' : cls.includes('locked') ? 'locked' : 'available';
+  });
+  const active = [...document.querySelectorAll('.tibia-tasks-active .tibia-task-active')].map(a => {
+    const l = lines(a); const pm = l.map(x => x.match(/^([\d.]+)\s*\/\s*([\d.]+)$/)).find(Boolean);
+    const deliver = [...a.querySelectorAll('button')].find(b => !b.classList.contains('tibia-task-cancel'));
+    const have = pm ? +pm[1].replace(/\./g, '') : 0, need = pm ? +pm[2].replace(/\./g, '') : 0;
+    return {name: l[0], have, need, deliver: !!deliver && !deliver.disabled, deliverText: deliver ? deliver.innerText.trim() : ''};
+  });
+  return {rows, active};
+}"""
+
+
 @dataclass
 class Member:
     name: str
@@ -91,6 +109,7 @@ class State:
     profit_hour: str = ""
     tracker: list = field(default_factory=list)     # criaturas do rastreador (identifica a caça)
     kills: dict = field(default_factory=dict)       # criatura -> abates no bestiario (qual aparece mais)
+    tracker_titles: list = field(default_factory=list)  # 'Troll: 4 de 250 kills · faltam 246' (meta do bestiary)
     difficulty: str = ""
     dest: str = ""                   # proxima caça na cidade
     modals: list = field(default_factory=list)
@@ -146,6 +165,7 @@ def parse_state(raw):
     st = State(gold=raw.get("gold", ""), loot_items=raw.get("loot"), backpack=raw.get("backpack", ""),
                reserve=raw.get("reserve", ""), xp_hour=raw.get("xph", ""), profit_hour=raw.get("profith", ""),
                tracker=list(raw.get("tracker") or []), kills=dict(raw.get("kills") or {}),
+               tracker_titles=list(raw.get("trackerTitles") or []),
                difficulty=raw.get("difficulty", ""),
                modals=list(raw.get("modals") or []))
     st.premium = "premium" in (raw.get("premium") or "").casefold()
@@ -331,6 +351,47 @@ class Account:
             return True
         finally:
             self.close_windows()
+
+    # ------------------------------------------------------------ tasks de produto
+    def _open_tasks(self):
+        self.close_windows()
+        self.page.evaluate("s => document.querySelector(s).click()", S.TASKS_OPEN)
+        if not self._wait(lambda: self.page.locator(S.TASKS_LIST).first.is_visible(), 6):
+            raise RuntimeError("a janela de Tasks nao abriu")
+        time.sleep(0.3)
+
+    def read_tasks(self):
+        """{'rows': {nome: done|active|locked|available}, 'active': [{name, have, need, ready, deliver}]}. Deixa a janela aberta."""
+        self._open_tasks()
+        data = self.page.evaluate(TASKS_JS)
+        for task in data["active"]:
+            task["ready"] = bool(task["deliver"] or (task["need"] and task["have"] >= task["need"]))
+        return data
+
+    def accept_task(self, name):
+        row = self.page.locator(S.TASK_ROW).filter(has=self.page.locator(f"text={name}"))
+        button = row.first.locator("button", has_text=S.TASK_ACCEPT_TEXT)
+        if button.count() == 0 or button.first.is_disabled():
+            raise RuntimeError(f"task '{name}' sem 'Aceitar' habilitado")
+        button.first.click()
+        if not self._wait(lambda: "accepted" in (row.first.get_attribute("class") or ""), 5):
+            raise RuntimeError(f"task '{name}' nao ficou ativa")
+
+    def deliver_task(self, name):
+        """Botao da task ativa que NAO e' o Cancelar (texto ainda nao visto: Entregar/Concluir/Coletar)."""
+        card = self.page.locator(S.TASK_ACTIVE).filter(has=self.page.locator(f"text={name}")).first
+        button = card.locator("button:not(.tibia-task-cancel)").first
+        if button.count() == 0 or button.is_disabled():
+            raise RuntimeError(f"task '{name}' sem botao de entrega habilitado")
+        text = button.inner_text().strip()
+        if re.search(r"cancel|desist|abandon", text, re.I):
+            raise RuntimeError(f"botao inesperado na task '{name}': {text}")
+        button.click()
+        time.sleep(0.8)
+        self._click_text(".modal", r"^(Entregar|Confirmar|Concluir|Coletar|OK)$")
+        if not self._wait(lambda: card.count() == 0 or not card.is_visible(), 6):
+            raise RuntimeError(f"task '{name}' continua ativa depois de entregar")
+        return text
 
     # ------------------------------------------------------------ prey
     def _open_prey(self):

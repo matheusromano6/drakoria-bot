@@ -28,6 +28,14 @@ DEFAULTS = {
         "check_minutes": 10,
         "max_rerolls_per_check": 10,
     },
+    # objetivos (aba Objetivos): filas escolhidas pelo usuario. Caça: task ativa -> bestiary -> caça da aba Regras
+    "goals": {
+        "enabled": True,                  # confere as tasks (tambem as aceitas na mao) e segue a fila
+        "tasks": [],                      # nomes das tasks de produto, na ordem
+        "bestiary": [],                   # criaturas, na ordem
+        "level_over": 10,                 # ate quantos levels acima do recomendado da caça a party pode ir
+        "check_minutes": 10,
+    },
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s
     "unknown_reload_seconds": 120,        # estado desconhecido por mais disso: recarrega

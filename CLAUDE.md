@@ -168,3 +168,34 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
 - Ainda NAO visto: preço da troca paga (texto do botao depois da gratis), confirmacao da troca.
 - Espacos da Prey (usuario 17/10): free = 1, Premium = 2, +1 comprado na Drako Shop = 3 (4 = mais um). read_prey ignora
   `state-locked`, entao serve pra qualquer quantidade. Conta free ainda nao vista ao vivo (supondo espaco 2 `state-locked`).
+
+## Tasks e Bestiary (17/10/2026, so leitura)
+- Tasks: Cyclopedia > aba `.cyclopedia-tab` 'Tasks' (quick-access 'Tasks (tecla 3)'). So existem 'Tasks de Creature Products'
+  (entregar ITENS), 51 no total (`drakoria_bot/data/tasks.json`: nome, criatura, local, level, item, quantidade, ouro/XP por
+  unidade, TP). Ate 2 ativas. Itens pedidos ficam protegidos do Auto Sell ate a entrega; contam Loot Pouch, mochila, Supply
+  Pouch e Banco. Cancelar libera a vaga e nao tira itens. Resumo: Task Points, Tasks ativas n/2, Prontas para entregar,
+  Concluidas n/51. Linha `.tibia-task-row` (classes `claimed` = concluida '✓ Concluída', `locked` = 'Requer Lv N'
+  disabled), botao `.tibia-button.small.green` 'Aceitar'. Botao de ENTREGAR ainda NAO visto (nenhuma ativa).
+  'Cabelos de Troll' ja concluida pelo usuario. 17 tasks citam locais que NAO estao nas 68 caças (Nibelor, Nargor,
+  Cyclopolis..., criaturas como Winter Wolf, Werefox) -> o bot so consegue fazer as 34 cuja criatura esta numa caça.
+- Bestiary: Cyclopedia > 'Bestiário': 1.269 criaturas em 22 classes `.bestiary-class-tile` ('Humanoides 2 / 123'),
+  busca 'Buscar criatura, classe ou local', toggle `.bestiary-tracker-option` (rastreador na caça). Criatura
+  `.bestiary-creature` (`complete` / `unknown` = '?', sem nome). DESCONHECIDAS nao aparecem nem na busca.
+  Conhecida: title 'Troll · 760 / 250 kills'; detalhe: Total Kills, meta, Charm Points (5), HP/XP, resistencias, loot,
+  Localizacao (texto do Tibia, nao e' a caça do jogo). Meta de abates tambem no rastreador da caça ('X de N kills · faltam').
+  Usuario ja completou Troll e Young Troll (6 conhecidas, 4 completas, 16 charm points).
+- ACEITAR (17/10 01:50, Claude, pedido do usuario): 'Restos de Rotworm' -> 'Aceitar' sem confirmacao. Linha vira
+  `.tibia-task-row.accepted` ('Ativa' + `.tibia-task-cancel` 'Cancelar', title 'Desistir desta Task. Os produtos continuam
+  com você.'). Painel 'Tasks ativas': `.tibia-tasks-active > .tibia-task-active` (item · criatura, 'have / need',
+  `.tibia-progress`, `.tibia-task-reward`, acoes `.tibia-task-active-actions`). Resumo 'Tasks ativas 1 / 2'.
+
+## v1.2.0 - Objetivos: tasks e bestiary (17/10/2026)
+- Aba Objetivos: 'Até N levels acima do recomendado' (goals.level_over, padrao 10) + listas de marcar: Tasks (so as 34
+  com criatura numa caça; ✓ concluida, ▶ ativa) e Bestiary (204 criaturas das caças, com a caça mais facil; ✓ completa).
+  A ordem da lista e' a fila. Prioridade da caça (goals.goal_hunt): task ativa nao pronta -> 1a criatura do bestiary nao
+  completa -> caça da aba Regras. Caça escolhida = a mais facil com a criatura e recomendado <= level + level_over.
+- A cada 10 min (sempre, tambem pra tasks aceitas na mao): read_tasks -> entrega as prontas -> aceita as proximas da fila
+  (disponiveis e alcançaveis) ate 2 ativas. Progresso da ativa: linha 'have / need' (ex. '0 / 250').
+- Bestiary: abates/meta vem do rastreador da caça (title 'X: a de N kills') -> memory.json 'bestiary'; completa -> proxima.
+- deliver_task: clica o botao da task ativa que nao e' Cancelar (+ confirma se pedir). AINDA NAO VALIDADO ao vivo.
+- Ao vivo 17/10 ~02:10: party lv 19 caçando; goal_hunt com a task de Rotworm ativa -> 'Rotworms'.

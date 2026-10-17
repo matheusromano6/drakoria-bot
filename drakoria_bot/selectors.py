@@ -53,6 +53,13 @@ OFFLINE_COLLECT = ".op-collect"                 # "Coletar e continuar"
 # botoes "inofensivos" pra fechar avisos/relatorios/morte
 DISMISS_TEXT = r"^(Coletar e continuar|Continuar|OK|Ok|Fechar|Entendi|Confirmar)$"
 
+# tasks de produto (Cyclopedia > Tasks). Ate 2 ativas; aceitar/entregar sem confirmacao (entregar: ainda nao visto)
+TASKS_OPEN = ".quick-access-button[title^='Tasks']"
+TASKS_LIST = ".tibia-tasks-list"
+TASK_ROW = ".tibia-tasks-list .tibia-task-row"   # classes: claimed / accepted / locked
+TASK_ACCEPT_TEXT = "Aceitar"
+TASK_ACTIVE = ".tibia-tasks-active .tibia-task-active"
+
 # prey (2 espacos liberados; 3 e 4 = Drako Shop). NUNCA: Comprar cartas / Sortear bonus / Escolher entre todas
 PREY_OPEN = ".drk-prey-topbar"
 PREY_WINDOW = ".drk-prey-window"

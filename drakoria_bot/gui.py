@@ -10,7 +10,7 @@ import tkinter as tk
 
 import customtkinter as ctk
 
-from . import VERSION, config, hunts, updater
+from . import VERSION, config, goals, hunts, updater
 from .credentials import Credentials
 from .memory import Memory
 from .paths import app_dir, resource_dir
@@ -62,18 +62,21 @@ class App:
         self.updating = False
         self._last_view = None
         try:
-            self.hunt_names = [h["name"] for h in hunts.load_hunts()]
+            self.hunt_list = hunts.load_hunts()
+            self.task_list = goals.doable_tasks(goals.load_tasks(), self.hunt_list)
         except Exception:
-            self.hunt_names = []
+            self.hunt_list, self.task_list = [], []
+        self.hunt_names = [h["name"] for h in self.hunt_list]
 
         self._build_header()
         self.tabs = ctk.CTkTabview(root, fg_color=PANEL, segmented_button_selected_color=ACCENT,
                                    segmented_button_selected_hover_color=ACCENT_HOVER, text_color=DARK_TEXT)
         self.tabs.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        for name in ("Painel", "Regras", "Login", "Log"):
+        for name in ("Painel", "Regras", "Objetivos", "Login", "Log"):
             self.tabs.add(name)
         self._build_panel(self.tabs.tab("Painel"))
         self._build_rules(self.tabs.tab("Regras"))
+        self._build_goals(self.tabs.tab("Objetivos"))
         self._build_login(self.tabs.tab("Login"))
         self._build_log(self.tabs.tab("Log"))
 
@@ -194,7 +197,8 @@ class App:
         st = snap.get("state") if snap else None
         if st is not None:
             view = (snap["phase"], snap.get("hunt"), snap.get("target"), st.difficulty, st.gold, st.loot_items, st.xp_hour,
-                    st.profit_hour, st.reserve, tuple(snap.get("prey") or []), tuple((m.name, m.role, m.level, m.xp_pct, m.hp, m.hp_max) for m in st.members))
+                    st.profit_hour, st.reserve, tuple(snap.get("prey") or []), tuple(snap.get("tasks") or []),
+                    snap.get("goal"), tuple((m.name, m.role, m.level, m.xp_pct, m.hp, m.hp_max) for m in st.members))
             if view != self._last_view:          # so' redesenha o que mudou
                 self._last_view = view
                 phase = PHASES.get(snap["phase"], snap["phase"])
@@ -213,7 +217,9 @@ class App:
                     f"Ouro {st.gold}   ·   Loot Pouch {loot}   ·   Reserva offline {st.reserve or '-'}\n"
                     f"XP/h {st.xp_hour or '-'}   ·   Lucro/h {st.profit_hour or '-'}\n"
                     f"Alvo: {snap.get('target') or '-'}   ·   Auto Sell {'Premium' if st.premium else 'Free'}\n"
-                    f"Prey: {' · '.join(f'{c} {b} ({t})' for c, b, t in snap.get('prey') or []) or '-'}"))
+                    f"Prey: {' · '.join(f'{c} {b} ({t})' for c, b, t in snap.get('prey') or []) or '-'}\n"
+                    f"Tasks: {' · '.join(f'{n} {h}/{q}' for n, h, q in snap.get('tasks') or []) or '-'}"))
+                self.goal_status.configure(text=f"Objetivo agora: {snap.get('goal') or 'nenhum (caça da aba Regras)'}")
         self.root.after(1000, self._poll_state)
 
     # ---------------------------------------------------------------- regras
@@ -304,6 +310,81 @@ class App:
             return
         if value != self.cfg["loot"]["sell_at_items"]:
             self._set_loot("sell_at_items", value)
+
+    # ------------------------------------------------------------- objetivos
+    def _build_goals(self, tab):
+        g = self.cfg["goals"]
+        top = ctk.CTkFrame(tab, fg_color="transparent")
+        top.pack(fill="x", padx=6, pady=(6, 2))
+        ctk.CTkLabel(top, text="Até", text_color=TEXT).pack(side="left")
+        self.over_var = tk.StringVar(value=str(g["level_over"]))
+        over = ctk.CTkEntry(top, textvariable=self.over_var, width=44, fg_color=PANEL_ALT)
+        over.pack(side="left", padx=4)
+        over.bind("<FocusOut>", lambda e: self._save_over())
+        over.bind("<Return>", lambda e: self._save_over())
+        ctk.CTkLabel(top, text="levels acima do recomendado da caça", text_color=MUTED).pack(side="left")
+        self.goal_status = ctk.CTkLabel(tab, text="", text_color=ACCENT, anchor="w", justify="left", wraplength=390)
+        self.goal_status.pack(fill="x", padx=8)
+        inner = ctk.CTkTabview(tab, fg_color=PANEL_ALT, height=330, segmented_button_selected_color=ACCENT,
+                               segmented_button_selected_hover_color=ACCENT_HOVER, text_color=DARK_TEXT)
+        inner.pack(fill="both", expand=True, padx=2, pady=2)
+        inner.add("Tasks")
+        inner.add("Bestiary")
+        ctk.CTkLabel(inner.tab("Tasks"), text="Marque as tasks: o bot aceita (até 2), caça, entrega e segue a ordem.",
+                     text_color=MUTED, wraplength=380, justify="left").pack(anchor="w", padx=4)
+        self.task_vars = {}
+        box = ctk.CTkScrollableFrame(inner.tab("Tasks"), fg_color=BG)
+        box.pack(fill="both", expand=True)
+        done = self.memory.get("task_rows") or {}
+        chosen = set(g["tasks"])
+        for task in self.task_list:
+            var = tk.BooleanVar(value=task["name"] in chosen)
+            mark = "✓ " if done.get(task["name"]) == "done" else ("▶ " if done.get(task["name"]) == "active" else "")
+            text = f"{mark}{task['name']}  ·  {task['amount']} {task['item']}  ·  Lv {task['level']}"
+            ctk.CTkCheckBox(box, text=text, variable=var, fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
+                            font=("Segoe UI", 11), command=self._save_goal_tasks).pack(anchor="w", pady=1)
+            self.task_vars[task["name"]] = var
+        ctk.CTkLabel(inner.tab("Bestiary"), text="Marque as criaturas: o bot caça onde ela aparece até completar e passa pra próxima.",
+                     text_color=MUTED, wraplength=380, justify="left").pack(anchor="w", padx=4)
+        self.beast_vars = {}
+        box = ctk.CTkScrollableFrame(inner.tab("Bestiary"), fg_color=BG)
+        box.pack(fill="both", expand=True)
+        progress = self.memory.get("bestiary") or {}
+        chosen = {c.casefold() for c in g["bestiary"]}
+        creatures = {}
+        for hunt in self.hunt_list:
+            for creature in hunt["creatures"]:
+                creatures.setdefault(creature, hunt)
+        self.creature_order = sorted(creatures, key=lambda c: (creatures[c]["level"], c))
+        for creature in self.creature_order:
+            hunt = creatures[creature]
+            var = tk.BooleanVar(value=creature.casefold() in chosen)
+            mark = "✓ " if goals.bestiary_done(creature, progress) else ""
+            ctk.CTkCheckBox(box, text=f"{mark}{creature}  ·  {hunt['name']} (Lv {hunt['level']})", variable=var,
+                            fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT, font=("Segoe UI", 11),
+                            command=self._save_goal_beasts).pack(anchor="w", pady=1)
+            self.beast_vars[creature] = var
+
+    def _save_over(self):
+        try:
+            value = max(0, int(self.over_var.get()))
+        except ValueError:
+            self.over_var.set(str(self.cfg["goals"]["level_over"]))
+            return
+        if value != self.cfg["goals"]["level_over"]:
+            self.cfg["goals"]["level_over"] = value
+            self.save()
+            self.log(f"regra: objetivos até +{value} levels")
+
+    def _save_goal_tasks(self):
+        self.cfg["goals"]["tasks"] = [t["name"] for t in self.task_list if self.task_vars[t["name"]].get()]
+        self.save()
+        self.log(f"tasks escolhidas: {', '.join(self.cfg['goals']['tasks']) or 'nenhuma'}")
+
+    def _save_goal_beasts(self):
+        self.cfg["goals"]["bestiary"] = [c for c in self.creature_order if self.beast_vars[c].get()]
+        self.save()
+        self.log(f"bestiary escolhido: {', '.join(self.cfg['goals']['bestiary']) or 'nenhum'}")
 
     # ----------------------------------------------------------------- login
     def _build_login(self, tab):
