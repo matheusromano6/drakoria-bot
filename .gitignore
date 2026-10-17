@@ -9,3 +9,4 @@ logs/
 release/
 credentials.json
 hunts.json
+build.log
