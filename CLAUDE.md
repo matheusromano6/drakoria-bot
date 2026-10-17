@@ -166,3 +166,5 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   desconhecido = nao paga. Espaco ativo nao e' trocado.
 - Validado ao vivo: read_prey (2 ativos, Trocar lista gratis). prey_choose usa os mesmos seletores da escolha manual.
 - Ainda NAO visto: preço da troca paga (texto do botao depois da gratis), confirmacao da troca.
+- Espacos da Prey (usuario 17/10): free = 1, Premium = 2, +1 comprado na Drako Shop = 3 (4 = mais um). read_prey ignora
+  `state-locked`, entao serve pra qualquer quantidade. Conta free ainda nao vista ao vivo (supondo espaco 2 `state-locked`).
