@@ -223,3 +223,15 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
 - ENTREGA VALIDADA 17/10 ~20:30: task pronta = `.tibia-task-active.ready` (linha 'have / need · pronta para entregar')
   com `.tibia-button.small.green` 'Entregar' -> deliver_task: entrega na hora, SEM confirmacao; TP 10 -> 20, Concluidas
   2/51, linha vira 'done'. Leitura do progresso aceita o sufixo '· pronta para entregar'.
+
+## Marketplace (20/10/2026, so leitura, pelo navegador do app logado)
+- Menu `data-nav=market` -> janela 'Marketplace' (abas Market, Minhas Ofertas, Historico, Caixa do Mercado, Favoritos &
+  Alertas). Dados por API REST JSON em `/api/v1/market/...` que EXIGE LOGIN (sem cookie: 401 AUTH_REQUIRED).
+  Rotas vistas: overview (carteira, config: ofertas 10 dias, taxa de execucao 10%, 20 ofertas por conta, MANUAL_ACCEPTANCE),
+  items?page=&limit=&sort=volume (1.443 itens: lowestSell, highestBuy, buyQuantity, sellQuantity, npcBuy/npcSell, categoria,
+  level, vocacoes, tier), items/<id> (item + buyOffers + sellOffers + statistics {windowDays 30, trades, daily}), 
+  drako-coins/orderbook (compra/venda de Drako Coin em ouro), watchlist, alerts, me/assets|orders|history|deliveries,
+  events (stream continuo: nao usar fetch simples). Catalogo estatico: /System/Marketplace/data/market-tibia-catalog.json.
+  Icones: /assets/items/<categoria>/<Nome>.gif. Hunt Analyzer tambem usa precos (hunt-analyzer-market-prices.js).
+- Caminho sugerido: fetch DENTRO da aba logada via CDP (page.evaluate) - sem abrir janela nem clicar; guardar em SQLite e
+  mostrar num painel local (modelo: matheusromano6/baiakidle/market: api/scanner/store/server/dashboard).
