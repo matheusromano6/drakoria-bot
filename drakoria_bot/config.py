@@ -41,7 +41,7 @@ DEFAULTS = {
     # Marketplace (aba Market): observa categorias, guarda historico (market.db), alerta e compra com permissao
     "market": {
         "enabled": True,
-        "interval_minutes": 5,
+        "interval_minutes": 2,
         "categories": ["Imbuement Materials"],
         "good": 0.15, "great": 0.25, "excellent": 0.40,   # desconto vs preço justo: boa / muito boa / excelente
         "trend_down": 0.10,                # preço caindo mais que isso derruba um nivel
@@ -52,6 +52,8 @@ DEFAULTS = {
         "reserve_gold": 1000000,           # nunca deixa o ouro abaixo disso
         "claim": True,                     # resgata a compra da Caixa do Mercado pro Banco
         "rules": {},                       # nome (minusculas) -> {watch, buy, max_price, quantity}
+        # imbuements observados: id -> {watch, tier 0..2, uses (aplicações), buy, pay_pct (% do justo que aceita pagar)}
+        "imbuements": {},
     },
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s

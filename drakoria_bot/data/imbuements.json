@@ -1,0 +1,894 @@
+{
+ "read_at": "2026-10-20",
+ "rules": {
+  "durationMs": 108000000,
+  "goldFee": 250000,
+  "goldTokenCost": 10,
+  "silverTokenCost": 10
+ },
+ "tiers": [
+  {
+   "id": 0,
+   "key": "basic",
+   "name": "Basic"
+  },
+  {
+   "id": 1,
+   "key": "intricate",
+   "name": "Intricate"
+  },
+  {
+   "id": 2,
+   "key": "powerful",
+   "name": "Powerful"
+  }
+ ],
+ "imbuements": [
+  {
+   "id": "blockade",
+   "name": "Blockade",
+   "category": "skill",
+   "kinds": [
+    "helmet",
+    "shield",
+    "spellbook"
+   ],
+   "effect": {
+    "type": "skill",
+    "stat": "shielding",
+    "values": [
+     1,
+     2,
+     4
+    ],
+    "label": "Shielding"
+   },
+   "materials": [
+    {
+     "name": "piece of scarab shell",
+     "display": "Piece of Scarab Shell",
+     "qty": 20
+    },
+    {
+     "name": "brimstone shell",
+     "display": "Brimstone Shell",
+     "qty": 25
+    },
+    {
+     "name": "frazzle skin",
+     "display": "Frazzle Skin",
+     "qty": 25
+    }
+   ]
+  },
+  {
+   "id": "chop",
+   "name": "Chop",
+   "category": "skill",
+   "kinds": [
+    "helmet",
+    "axe"
+   ],
+   "effect": {
+    "type": "skill",
+    "stat": "melee",
+    "values": [
+     1,
+     2,
+     4
+    ],
+    "label": "Axe Fighting"
+   },
+   "materials": [
+    {
+     "name": "orc tooth",
+     "display": "Orc Tooth",
+     "qty": 20
+    },
+    {
+     "name": "battle stone",
+     "display": "Battle Stone",
+     "qty": 25
+    },
+    {
+     "name": "moohtant horn",
+     "display": "Moohtant Horn",
+     "qty": 20
+    }
+   ]
+  },
+  {
+   "id": "epiphany",
+   "name": "Epiphany",
+   "category": "skill",
+   "kinds": [
+    "helmet",
+    "wand",
+    "rod"
+   ],
+   "effect": {
+    "type": "skill",
+    "stat": "magic",
+    "values": [
+     1,
+     2,
+     4
+    ],
+    "label": "Magic Level"
+   },
+   "materials": [
+    {
+     "name": "elvish talisman",
+     "display": "Elvish Talisman",
+     "qty": 25
+    },
+    {
+     "name": "broken shamanic staff",
+     "display": "Broken Shamanic Staff",
+     "qty": 15
+    },
+    {
+     "name": "strand of medusa hair",
+     "display": "Strand of Medusa Hair",
+     "qty": 15
+    }
+   ]
+  },
+  {
+   "id": "precision",
+   "name": "Precision",
+   "category": "skill",
+   "kinds": [
+    "helmet",
+    "bow",
+    "crossbow"
+   ],
+   "effect": {
+    "type": "skill",
+    "stat": "distance",
+    "values": [
+     1,
+     2,
+     4
+    ],
+    "label": "Distance Fighting"
+   },
+   "materials": [
+    {
+     "name": "elven scouting glass",
+     "display": "Elven Scouting Glass",
+     "qty": 25
+    },
+    {
+     "name": "elven hoof",
+     "display": "Elven Hoof",
+     "qty": 20
+    },
+    {
+     "name": "metal spike",
+     "display": "Metal Spike",
+     "qty": 10
+    }
+   ]
+  },
+  {
+   "id": "slash",
+   "name": "Slash",
+   "category": "skill",
+   "kinds": [
+    "helmet",
+    "sword"
+   ],
+   "effect": {
+    "type": "skill",
+    "stat": "melee",
+    "values": [
+     1,
+     2,
+     4
+    ],
+    "label": "Sword Fighting"
+   },
+   "materials": [
+    {
+     "name": "lion's mane",
+     "display": "Lion's Mane",
+     "qty": 25
+    },
+    {
+     "name": "mooh'tah shell",
+     "display": "Mooh'tah Shell",
+     "qty": 25
+    },
+    {
+     "name": "war crystal",
+     "display": "War Crystal",
+     "qty": 5
+    }
+   ]
+  },
+  {
+   "id": "bash",
+   "name": "Bash",
+   "category": "skill",
+   "kinds": [
+    "helmet",
+    "club"
+   ],
+   "effect": {
+    "type": "skill",
+    "stat": "melee",
+    "values": [
+     1,
+     2,
+     4
+    ],
+    "label": "Club Fighting"
+   },
+   "materials": [
+    {
+     "name": "cyclops toe",
+     "display": "Cyclops Toe",
+     "qty": 20
+    },
+    {
+     "name": "ogre nose ring",
+     "display": "Ogre Nose Ring",
+     "qty": 15
+    },
+    {
+     "name": "warmaster's wristguards",
+     "display": "Warmaster's Wristguards",
+     "qty": 10
+    }
+   ]
+  },
+  {
+   "id": "punch",
+   "name": "Punch",
+   "category": "skill",
+   "kinds": [
+    "helmet",
+    "fist"
+   ],
+   "effect": {
+    "type": "skill",
+    "stat": "fist",
+    "values": [
+     1,
+     2,
+     4
+    ],
+    "label": "Fist Fighting"
+   },
+   "materials": [
+    {
+     "name": "tarantula egg",
+     "display": "Tarantula Egg",
+     "qty": 25
+    },
+    {
+     "name": "mantassin tail",
+     "display": "Mantassin Tail",
+     "qty": 20
+    },
+    {
+     "name": "gold-brocaded cloth",
+     "display": "Gold-Brocaded Cloth",
+     "qty": 15
+    }
+   ]
+  },
+  {
+   "id": "reap",
+   "name": "Reap",
+   "category": "damage",
+   "kinds": [
+    "sword",
+    "axe",
+    "club",
+    "bow",
+    "crossbow"
+   ],
+   "effect": {
+    "type": "conversion",
+    "element": "death",
+    "values": [
+     10,
+     25,
+     50
+    ],
+    "label": "Death Damage"
+   },
+   "materials": [
+    {
+     "name": "pile of grave earth",
+     "display": "Pile of Grave Earth",
+     "qty": 25
+    },
+    {
+     "name": "demonic skeletal hand",
+     "display": "Demonic Skeletal Hand",
+     "qty": 20
+    },
+    {
+     "name": "petrified scream",
+     "display": "Petrified Scream",
+     "qty": 5
+    }
+   ]
+  },
+  {
+   "id": "electrify",
+   "name": "Electrify",
+   "category": "damage",
+   "kinds": [
+    "sword",
+    "axe",
+    "club",
+    "bow",
+    "crossbow"
+   ],
+   "effect": {
+    "type": "conversion",
+    "element": "energy",
+    "values": [
+     10,
+     25,
+     50
+    ],
+    "label": "Energy Damage"
+   },
+   "materials": [
+    {
+     "name": "rorc feather",
+     "display": "Rorc Feather",
+     "qty": 25
+    },
+    {
+     "name": "peacock feather fan",
+     "display": "Peacock Feather Fan",
+     "qty": 5
+    },
+    {
+     "name": "energy vein",
+     "display": "Energy Vein",
+     "qty": 1
+    }
+   ]
+  },
+  {
+   "id": "venom",
+   "name": "Venom",
+   "category": "damage",
+   "kinds": [
+    "sword",
+    "axe",
+    "club",
+    "bow",
+    "crossbow"
+   ],
+   "effect": {
+    "type": "conversion",
+    "element": "earth",
+    "values": [
+     10,
+     25,
+     50
+    ],
+    "label": "Earth Damage"
+   },
+   "materials": [
+    {
+     "name": "swamp grass",
+     "display": "Swamp Grass",
+     "qty": 25
+    },
+    {
+     "name": "poisonous slime",
+     "display": "Poisonous Slime",
+     "qty": 20
+    },
+    {
+     "name": "slime heart",
+     "display": "Slime Heart",
+     "qty": 2
+    }
+   ]
+  },
+  {
+   "id": "frost",
+   "name": "Frost",
+   "category": "damage",
+   "kinds": [
+    "sword",
+    "axe",
+    "club",
+    "bow",
+    "crossbow"
+   ],
+   "effect": {
+    "type": "conversion",
+    "element": "ice",
+    "values": [
+     10,
+     25,
+     50
+    ],
+    "label": "Ice Damage"
+   },
+   "materials": [
+    {
+     "name": "frosty heart",
+     "display": "Frosty Heart",
+     "qty": 25
+    },
+    {
+     "name": "seacrest hair",
+     "display": "Seacrest Hair",
+     "qty": 10
+    },
+    {
+     "name": "polar bear paw",
+     "display": "Polar Bear Paw",
+     "qty": 5
+    }
+   ]
+  },
+  {
+   "id": "scorch",
+   "name": "Scorch",
+   "category": "damage",
+   "kinds": [
+    "sword",
+    "axe",
+    "club",
+    "bow",
+    "crossbow"
+   ],
+   "effect": {
+    "type": "conversion",
+    "element": "fire",
+    "values": [
+     10,
+     25,
+     50
+    ],
+    "label": "Fire Damage"
+   },
+   "materials": [
+    {
+     "name": "fiery heart",
+     "display": "Fiery Heart",
+     "qty": 25
+    },
+    {
+     "name": "green dragon scale",
+     "display": "Green Dragon Scale",
+     "qty": 5
+    },
+    {
+     "name": "demon horn",
+     "display": "Demon Horn",
+     "qty": 5
+    }
+   ]
+  },
+  {
+   "id": "cloud-fabric",
+   "name": "Cloud Fabric",
+   "category": "protection",
+   "kinds": [
+    "armor",
+    "shield",
+    "spellbook"
+   ],
+   "effect": {
+    "type": "protection",
+    "element": "energy",
+    "values": [
+     3,
+     8,
+     15
+    ],
+    "label": "Energy Protection"
+   },
+   "materials": [
+    {
+     "name": "wyvern talisman",
+     "display": "Wyvern Talisman",
+     "qty": 20
+    },
+    {
+     "name": "crawler head plating",
+     "display": "Crawler Head Plating",
+     "qty": 15
+    },
+    {
+     "name": "wyrm scale",
+     "display": "Wyrm Scale",
+     "qty": 10
+    }
+   ]
+  },
+  {
+   "id": "demon-presence",
+   "name": "Demon Presence",
+   "category": "protection",
+   "kinds": [
+    "armor",
+    "shield",
+    "spellbook"
+   ],
+   "effect": {
+    "type": "protection",
+    "element": "holy",
+    "values": [
+     3,
+     8,
+     15
+    ],
+    "label": "Holy Protection"
+   },
+   "materials": [
+    {
+     "name": "cultish robe",
+     "display": "Cultish Robe",
+     "qty": 25
+    },
+    {
+     "name": "cultish mask",
+     "display": "Cultish Mask",
+     "qty": 25
+    },
+    {
+     "name": "hellspawn tail",
+     "display": "Hellspawn Tail",
+     "qty": 20
+    }
+   ]
+  },
+  {
+   "id": "dragon-hide",
+   "name": "Dragon Hide",
+   "category": "protection",
+   "kinds": [
+    "armor",
+    "shield",
+    "spellbook"
+   ],
+   "effect": {
+    "type": "protection",
+    "element": "fire",
+    "values": [
+     3,
+     8,
+     15
+    ],
+    "label": "Fire Protection"
+   },
+   "materials": [
+    {
+     "name": "green dragon leather",
+     "display": "Green Dragon Leather",
+     "qty": 20
+    },
+    {
+     "name": "blazing bone",
+     "display": "Blazing Bone",
+     "qty": 10
+    },
+    {
+     "name": "draken sulphur",
+     "display": "Draken Sulphur",
+     "qty": 5
+    }
+   ]
+  },
+  {
+   "id": "lich-shroud",
+   "name": "Lich Shroud",
+   "category": "protection",
+   "kinds": [
+    "armor",
+    "shield",
+    "spellbook"
+   ],
+   "effect": {
+    "type": "protection",
+    "element": "death",
+    "values": [
+     2,
+     5,
+     10
+    ],
+    "label": "Death Protection"
+   },
+   "materials": [
+    {
+     "name": "flask of embalming fluid",
+     "display": "Flask of Embalming Fluid",
+     "qty": 25
+    },
+    {
+     "name": "gloom wolf fur",
+     "display": "Gloom Wolf Fur",
+     "qty": 20
+    },
+    {
+     "name": "mystical hourglass",
+     "display": "Mystical Hourglass",
+     "qty": 5
+    }
+   ]
+  },
+  {
+   "id": "quara-scale",
+   "name": "Quara Scale",
+   "category": "protection",
+   "kinds": [
+    "armor",
+    "shield",
+    "spellbook"
+   ],
+   "effect": {
+    "type": "protection",
+    "element": "ice",
+    "values": [
+     3,
+     8,
+     15
+    ],
+    "label": "Ice Protection"
+   },
+   "materials": [
+    {
+     "name": "winter wolf fur",
+     "display": "Winter Wolf Fur",
+     "qty": 25
+    },
+    {
+     "name": "thick fur",
+     "display": "Thick Fur",
+     "qty": 15
+    },
+    {
+     "name": "deepling warts",
+     "display": "Deepling Warts",
+     "qty": 10
+    }
+   ]
+  },
+  {
+   "id": "snake-skin",
+   "name": "Snake Skin",
+   "category": "protection",
+   "kinds": [
+    "armor",
+    "shield",
+    "spellbook"
+   ],
+   "effect": {
+    "type": "protection",
+    "element": "earth",
+    "values": [
+     3,
+     8,
+     15
+    ],
+    "label": "Earth Protection"
+   },
+   "materials": [
+    {
+     "name": "piece of swampling wood",
+     "display": "Piece of Swampling Wood",
+     "qty": 25
+    },
+    {
+     "name": "snake skin",
+     "display": "Snake Skin",
+     "qty": 20
+    },
+    {
+     "name": "brimstone fangs",
+     "display": "Brimstone Fangs",
+     "qty": 10
+    }
+   ]
+  },
+  {
+   "id": "featherweight",
+   "name": "Featherweight",
+   "category": "support",
+   "kinds": [
+    "backpack"
+   ],
+   "effect": {
+    "type": "backpack-slots",
+    "values": [
+     10,
+     20,
+     30
+    ],
+    "label": "Backpack Slots"
+   },
+   "materials": [
+    {
+     "name": "fairy wings",
+     "display": "Fairy Wings",
+     "qty": 20
+    },
+    {
+     "name": "little bowl of myrrh",
+     "display": "Little Bowl of Myrrh",
+     "qty": 10
+    },
+    {
+     "name": "goosebump leather",
+     "display": "Goosebump Leather",
+     "qty": 5
+    }
+   ]
+  },
+  {
+   "id": "strike",
+   "name": "Strike",
+   "category": "support",
+   "kinds": [
+    "sword",
+    "axe",
+    "club",
+    "fist",
+    "bow",
+    "crossbow",
+    "wand",
+    "rod"
+   ],
+   "effect": {
+    "type": "critical",
+    "chance": 10,
+    "values": [
+     15,
+     25,
+     50
+    ],
+    "label": "Critical Damage"
+   },
+   "materials": [
+    {
+     "name": "protective charm",
+     "display": "Protective Charm",
+     "qty": 20
+    },
+    {
+     "name": "sabretooth",
+     "display": "Sabretooth",
+     "qty": 25
+    },
+    {
+     "name": "vexclaw talon",
+     "display": "Vexclaw Talon",
+     "qty": 5
+    }
+   ]
+  },
+  {
+   "id": "swiftness",
+   "name": "Swiftness",
+   "category": "support",
+   "kinds": [
+    "boots"
+   ],
+   "effect": {
+    "type": "speed",
+    "values": [
+     10,
+     15,
+     30
+    ],
+    "label": "Speed"
+   },
+   "materials": [
+    {
+     "name": "damselfly wing",
+     "display": "Damselfly Wing",
+     "qty": 15
+    },
+    {
+     "name": "compass",
+     "display": "Compass",
+     "qty": 25
+    },
+    {
+     "name": "waspoid wing",
+     "display": "Waspoid Wing",
+     "qty": 20
+    }
+   ]
+  },
+  {
+   "id": "vampirism",
+   "name": "Vampirism",
+   "category": "support",
+   "kinds": [
+    "armor",
+    "sword",
+    "axe",
+    "club",
+    "fist",
+    "bow",
+    "crossbow"
+   ],
+   "effect": {
+    "type": "life-leech",
+    "chance": 100,
+    "values": [
+     5,
+     10,
+     25
+    ],
+    "label": "Life Leech"
+   },
+   "materials": [
+    {
+     "name": "vampire teeth",
+     "display": "Vampire Teeth",
+     "qty": 25
+    },
+    {
+     "name": "bloody pincers",
+     "display": "Bloody Pincers",
+     "qty": 15
+    },
+    {
+     "name": "piece of dead brain",
+     "display": "Piece of Dead Brain",
+     "qty": 5
+    }
+   ]
+  },
+  {
+   "id": "void",
+   "name": "Void",
+   "category": "support",
+   "kinds": [
+    "helmet",
+    "sword",
+    "axe",
+    "club",
+    "fist",
+    "bow",
+    "crossbow",
+    "wand",
+    "rod"
+   ],
+   "effect": {
+    "type": "mana-leech",
+    "chance": 100,
+    "values": [
+     3,
+     5,
+     8
+    ],
+    "label": "Mana Leech"
+   },
+   "materials": [
+    {
+     "name": "rope belt",
+     "display": "Rope Belt",
+     "qty": 25
+    },
+    {
+     "name": "silencer claws",
+     "display": "Silencer Claws",
+     "qty": 25
+    },
+    {
+     "name": "some grimeleech wings",
+     "display": "Some Grimeleech Wings",
+     "qty": 5
+    }
+   ]
+  }
+ ]
+}

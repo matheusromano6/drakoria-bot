@@ -101,6 +101,17 @@ class MarketApi:
     def overview(self):
         return self._get("/api/v1/market/overview")
 
+    def assets(self):
+        """{nome_minusculo: quantidade} dos itens do usuario (banco + inventario), via me/assets."""
+        out = {}
+        for asset in self._get("/api/v1/market/me/assets").get("assets") or []:
+            key = (asset.get("name") or asset.get("displayName") or "").casefold()
+            try:
+                out[key] = out.get(key, 0) + int(float(asset.get("quantity") or 0))
+            except (TypeError, ValueError):
+                pass
+        return out
+
     def deliveries(self):
         return self._get("/api/v1/market/me/deliveries").get("deliveries") or []
 

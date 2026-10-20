@@ -273,3 +273,28 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
 - v1.4.1 (20/10 19:40): Pool.open loga 'Conectando ao IdleDeck...' e desiste em 45s (CONNECT_TIMEOUT_MS) com mensagem
   clara. Antes o bot ficava mudo em 'Conectando...' com as abas do Huntera travadas. Usuario abriu a v1.4.0 de
   Downloads\DrakoriaBot-windows com a v1.3.0 de release\ ainda aberta (2 bots): fechar o antigo.
+
+## Imbuements (20/10/2026, lido do codigo do jogo)
+- Receitas: /System/imbuements/imbuement-data.js (IMBUEMENT_DEFINITIONS, 23 imbuements; IMBUEMENT_TIERS Basic/
+  Intricate/Powerful; IMBUEMENT_RULES: 30h, taxa 250.000 de ouro, 10 Gold Token ou 10 Silver Token). Salvo em
+  drakoria_bot/data/imbuements.json. imbuement-system.js: nivel N usa materials.slice(0, N+1) (Basic = 1o material,
+  Intricate = 1o+2o, Powerful = os 3); pagamento alternativo 'gold-token'/'silver-token' = 10 tokens em qualquer nivel.
+  Ex.: Void = Rope Belt x25 / Silencer Claws x25 / Some Grimeleech Wings x5; Blockade = Piece of Scarab Shell x20 /
+  Brimstone Shell x25 / Frazzle Skin x25. Gold/Silver Token tambem estao na categoria 'Imbuement Materials' do Market.
+- me/assets: itens do usuario com quantity / bankQuantity / inventoryQuantity (pra saber quanto ja tem de cada material).
+- 20/10: Brave com depuracao (porta 9230, perfil C:\Users\Pichau\BraveDrakoriaBot) no lugar do IdleDeck travado;
+  config do bot (Downloads\DrakoriaBot-windows) cdp_url = http://127.0.0.1:9230. Conta logada: party lv 241.
+
+## v1.5.0 - Market por imbuement (20/10/2026, usuario)
+- market/imbuements.py (puro): materials_for(nivel), offer_cost (ofertas mais baratas), plan(def, nivel, aplicações,
+  board, owned) -> linhas Material/Por uso/Precisa/Tenho/Falta/Menor/Justo/À venda/Custo + custo por 10 tokens (gold/
+  silver) + taxa. config.market.imbuements {id: {watch, tier 0..2, uses, buy, pay_pct}}.
+- Vigia: le detalhe tambem dos materiais observados SEM oferta (pra ter o justo), me/assets (owned) quando ha imbuement
+  observado; compra o que FALTA de cada material com chave geral + buy, pagando ate pay_pct% do justo (sem justo nao
+  compra), dentro do orçamento/reserva. Intervalo do Market agora 2 min.
+- Interface: janela 960x680; Market com sub-abas Imbuements (lista por categoria ★/$ a esquerda; nivel, aplicações,
+  tabela de materiais, resumo com custo/tokens/taxa, compra até X% do justo) e Itens (tabela antiga); rodape fixo com
+  chave geral, orçamento/dia, reserva e status.
+- Validado ao vivo 20/10 20:07 (Brave 9230, conta lv 241, so leitura): 71 listados, 7 avaliados, owned rope belt 192 /
+  silencer claws 36 / silver token 3; Void Powerful: falta so 5 Some Grimeleech Wings (sem oferta, justo 200k).
+- Proximo teste combinado com o usuario: outra conta cria oferta barata -> o bot (Market ligado, compra ligada) compra.

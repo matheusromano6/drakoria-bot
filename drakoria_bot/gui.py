@@ -12,6 +12,7 @@ from tkinter import ttk
 import customtkinter as ctk
 
 from . import VERSION, config, goals, hunts, updater
+from .market import imbuements as imb
 from .credentials import Credentials
 from .memory import Memory
 from .paths import app_dir, resource_dir
@@ -44,8 +45,8 @@ class App:
     def __init__(self, root, runner_factory=Runner):
         self.root = root
         root.title(f"DRAKORIA BOT  v{VERSION}")
-        root.geometry("470x620")
-        root.minsize(420, 520)
+        root.geometry("960x680")
+        root.minsize(760, 560)
         root.configure(fg_color=BG)
         icon = os.path.join(resource_dir(), "icon.ico")
         if os.path.exists(icon):
@@ -226,6 +227,7 @@ class App:
                     f"Tasks: {' · '.join(f'{n} {h}/{q}' for n, h, q in snap.get('tasks') or []) or '-'}"))
                 self.goal_status.configure(text=f"Objetivo agora: {snap.get('goal') or 'nenhum (caça da aba Regras)'}")
         self._refresh_market()
+        self._imb_render()
         self.root.after(1000, self._poll_state)
 
     # ---------------------------------------------------------------- regras
@@ -282,7 +284,7 @@ class App:
                                "quando a Loot Pouch chega no número de itens. Insano+ pede level 250/450/700/1000. "
                                "Prey: escolhe a criatura da caça; senão troca a lista (grátis, depois com ouro); "
                                "nunca gasta cartas nem Drako Coins.",
-                     text_color=MUTED, wraplength=380, justify="left").pack(anchor="w", padx=10, pady=6)
+                     text_color=MUTED, wraplength=840, justify="left").pack(anchor="w", padx=10, pady=6)
 
     def _set(self, key, value):
         self.cfg[key] = value
@@ -329,7 +331,7 @@ class App:
         over.bind("<FocusOut>", lambda e: self._save_over())
         over.bind("<Return>", lambda e: self._save_over())
         ctk.CTkLabel(top, text="levels acima do recomendado da caça", text_color=MUTED).pack(side="left")
-        self.goal_status = ctk.CTkLabel(tab, text="", text_color=ACCENT, anchor="w", justify="left", wraplength=390)
+        self.goal_status = ctk.CTkLabel(tab, text="", text_color=ACCENT, anchor="w", justify="left", wraplength=840)
         self.goal_status.pack(fill="x", padx=8)
         inner = ctk.CTkTabview(tab, fg_color=PANEL_ALT, height=330, segmented_button_selected_color=ACCENT,
                                segmented_button_selected_hover_color=ACCENT_HOVER, text_color=DARK_TEXT)
@@ -337,7 +339,7 @@ class App:
         inner.add("Tasks")
         inner.add("Bestiary")
         ctk.CTkLabel(inner.tab("Tasks"), text="Marque as tasks: o bot aceita (até 2), caça, entrega e segue a ordem.",
-                     text_color=MUTED, wraplength=380, justify="left").pack(anchor="w", padx=4)
+                     text_color=MUTED, wraplength=840, justify="left").pack(anchor="w", padx=4)
         self.task_vars = {}
         box = ctk.CTkScrollableFrame(inner.tab("Tasks"), fg_color=BG)
         box.pack(fill="both", expand=True)
@@ -351,7 +353,7 @@ class App:
             self._goal_row(box, task["name"], text, var, self._save_goal_tasks)
             self.task_vars[task["name"]] = var
         ctk.CTkLabel(inner.tab("Bestiary"), text="Marque as criaturas: o bot caça onde ela aparece até completar e passa pra próxima.",
-                     text_color=MUTED, wraplength=380, justify="left").pack(anchor="w", padx=4)
+                     text_color=MUTED, wraplength=840, justify="left").pack(anchor="w", padx=4)
         self.beast_vars = {}
         box = ctk.CTkScrollableFrame(inner.tab("Bestiary"), fg_color=BG)
         box.pack(fill="both", expand=True)
@@ -433,10 +435,221 @@ class App:
     # ---------------------------------------------------------------- market
     def _build_market(self, tab):
         m = self.cfg["market"]
-        top = ctk.CTkFrame(tab, fg_color="transparent")
-        top.pack(fill="x", padx=4, pady=(4, 2))
-        self.market_status = ctk.CTkLabel(top, text="Ligue o bot para coletar os preços.", text_color=MUTED, anchor="w")
-        self.market_status.pack(side="left")
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Market.Treeview", background=BG, fieldbackground=BG, foreground=TEXT, rowheight=22,
+                        borderwidth=0, font=("Segoe UI", 10))
+        style.configure("Market.Treeview.Heading", background=PANEL_ALT, foreground=MUTED, borderwidth=0,
+                        font=("Segoe UI", 9, "bold"))
+        style.map("Market.Treeview", background=[("selected", BORDER)])
+
+        # rodape fixo: status + chave geral + limites (vale pras duas sub-abas)
+        bottom = ctk.CTkFrame(tab, fg_color=PANEL_ALT, corner_radius=6)
+        bottom.pack(side="bottom", fill="x", padx=4, pady=(2, 4))
+        self.auto_buy_var = tk.BooleanVar(value=bool(m["auto_buy"]))
+        ctk.CTkSwitch(bottom, text="Compra automática (chave geral)", variable=self.auto_buy_var, progress_color=ACCENT,
+                      text_color=TEXT, command=lambda: self._set_market("auto_buy", self.auto_buy_var.get())
+                      ).pack(side="left", padx=8, pady=6)
+        self.budget_var = tk.StringVar(value=str(m["daily_budget"]))
+        self.reserve_var = tk.StringVar(value=str(m["reserve_gold"]))
+        for label, var, key in (("Orçamento/dia", self.budget_var, "daily_budget"), ("Reserva de ouro", self.reserve_var, "reserve_gold")):
+            ctk.CTkLabel(bottom, text=label, text_color=TEXT).pack(side="left", padx=(14, 4))
+            entry = ctk.CTkEntry(bottom, textvariable=var, width=100, fg_color=BG)
+            entry.pack(side="left")
+            entry.bind("<FocusOut>", lambda e, k=key, v=var: self._save_market_number(k, v))
+            entry.bind("<Return>", lambda e, k=key, v=var: self._save_market_number(k, v))
+        self.market_status = ctk.CTkLabel(bottom, text="Ligue o bot para coletar os preços.", text_color=MUTED, anchor="e")
+        self.market_status.pack(side="right", padx=8)
+
+        inner = ctk.CTkTabview(tab, fg_color=PANEL, segmented_button_selected_color=ACCENT,
+                               segmented_button_selected_hover_color=ACCENT_HOVER, text_color=DARK_TEXT)
+        inner.pack(fill="both", expand=True, padx=2)
+        inner.add("Imbuements")
+        inner.add("Itens")
+        self._build_market_imb(inner.tab("Imbuements"))
+        self._build_market_items(inner.tab("Itens"))
+
+    # ------------------------------------------------------ market: imbuements
+    def _build_market_imb(self, tab):
+        try:
+            self.imb_data = imb.load()
+        except Exception:
+            self.imb_data = {"imbuements": [], "rules": {}}
+        self.imb_by_id = {d["id"]: d for d in self.imb_data["imbuements"]}
+        self.imb_selected = None
+        self.imb_buttons = {}
+        left = ctk.CTkScrollableFrame(tab, width=200, fg_color=BG, corner_radius=6)
+        left.pack(side="left", fill="y", padx=(2, 6), pady=2)
+        groups = {}
+        for d in self.imb_data["imbuements"]:
+            groups.setdefault(d["category"], []).append(d)
+        for category in ("skill", "damage", "protection", "support"):
+            if category not in groups:
+                continue
+            ctk.CTkLabel(left, text=imb.CATEGORY_NAMES.get(category, category).upper(), text_color=MUTED,
+                         font=("Segoe UI", 9, "bold"), anchor="w").pack(fill="x", padx=6, pady=(8, 1))
+            for d in groups[category]:
+                b = ctk.CTkButton(left, text=d["name"], anchor="w", height=24, fg_color="transparent", hover_color=BORDER,
+                                  text_color=TEXT, command=lambda i=d["id"]: self._imb_select(i))
+                b.pack(fill="x", padx=2, pady=0)
+                self.imb_buttons[d["id"]] = b
+        self._imb_marks()
+
+        right = ctk.CTkFrame(tab, fg_color="transparent")
+        right.pack(side="left", fill="both", expand=True)
+        self.imb_title = ctk.CTkLabel(right, text="Escolha um imbuement à esquerda", text_color=TEXT,
+                                      font=("Segoe UI", 16, "bold"), anchor="w")
+        self.imb_title.pack(fill="x", padx=4, pady=(2, 0))
+        self.imb_sub = ctk.CTkLabel(right, text="", text_color=MUTED, anchor="w", justify="left")
+        self.imb_sub.pack(fill="x", padx=4)
+
+        ctrl = ctk.CTkFrame(right, fg_color=PANEL_ALT, corner_radius=6)
+        ctrl.pack(fill="x", padx=4, pady=6)
+        self.imb_watch = tk.BooleanVar()
+        ctk.CTkCheckBox(ctrl, text="Observar", variable=self.imb_watch, fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                        text_color=TEXT, command=self._imb_save).pack(side="left", padx=8, pady=6)
+        ctk.CTkLabel(ctrl, text="Nível", text_color=TEXT).pack(side="left", padx=(12, 4))
+        self.imb_tier = ctk.CTkSegmentedButton(ctrl, values=imb.TIER_NAMES, selected_color=ACCENT,
+                                               selected_hover_color=ACCENT_HOVER, text_color=TEXT,
+                                               command=lambda v: self._imb_save())
+        self.imb_tier.set(imb.TIER_NAMES[0])
+        self.imb_tier.pack(side="left")
+        ctk.CTkLabel(ctrl, text="Aplicações", text_color=TEXT).pack(side="left", padx=(12, 4))
+        self.imb_uses = tk.StringVar(value="1")
+        uses = ctk.CTkEntry(ctrl, textvariable=self.imb_uses, width=46, fg_color=BG)
+        uses.pack(side="left")
+        uses.bind("<FocusOut>", lambda e: self._imb_save())
+        uses.bind("<Return>", lambda e: self._imb_save())
+
+        cols = ("mat", "uso", "precisa", "tenho", "falta", "menor", "justo", "venda", "custo")
+        heads = ("Material", "Por uso", "Precisa", "Tenho", "Falta", "Menor", "Justo", "À venda", "Custo (falta)")
+        widths = (140, 52, 56, 52, 48, 72, 72, 56, 110)
+        self.imb_tree = ttk.Treeview(right, columns=cols, show="headings", height=4, style="Market.Treeview")
+        for col, head, width in zip(cols, heads, widths):
+            self.imb_tree.heading(col, text=head)
+            self.imb_tree.column(col, width=width, anchor="w" if col == "mat" else "e", stretch=col == "mat")
+        for q, color in (("excelente", OK), ("muito boa", ACCENT), ("boa", "#c9b26b"), ("ok", TEXT), ("vazio", MUTED)):
+            self.imb_tree.tag_configure(q, foreground=color)
+        self.imb_tree.pack(fill="x", padx=4)
+        self.imb_summary = ctk.CTkLabel(right, text="", text_color=TEXT, anchor="w", justify="left", font=("Segoe UI", 12))
+        self.imb_summary.pack(fill="x", padx=6, pady=(8, 2))
+
+        buy = ctk.CTkFrame(right, fg_color=PANEL_ALT, corner_radius=6)
+        buy.pack(fill="x", padx=4, pady=6)
+        self.imb_buy = tk.BooleanVar()
+        ctk.CTkCheckBox(buy, text="Comprar o que falta automaticamente", variable=self.imb_buy, fg_color=ACCENT,
+                        hover_color=ACCENT_HOVER, text_color=TEXT, command=self._imb_save).pack(side="left", padx=8, pady=6)
+        ctk.CTkLabel(buy, text="pagando até", text_color=TEXT).pack(side="left", padx=(12, 4))
+        self.imb_pct = tk.StringVar(value="90")
+        pct = ctk.CTkEntry(buy, textvariable=self.imb_pct, width=46, fg_color=BG)
+        pct.pack(side="left")
+        pct.bind("<FocusOut>", lambda e: self._imb_save())
+        pct.bind("<Return>", lambda e: self._imb_save())
+        ctk.CTkLabel(buy, text="% do preço justo", text_color=TEXT).pack(side="left", padx=4)
+        self.imb_hint = ctk.CTkLabel(right, text="Compra automática precisa da chave geral (embaixo) ligada. Sem histórico de "
+                                                 "preço o bot não compra o material (não sabe se é barato).",
+                                     text_color=MUTED, anchor="w", justify="left", wraplength=640)
+        self.imb_hint.pack(fill="x", padx=6)
+        self._imb_view = None
+
+    def _imb_rule(self, imb_id):
+        return dict((self.cfg["market"].get("imbuements") or {}).get(imb_id) or {})
+
+    def _imb_marks(self):
+        for imb_id, b in self.imb_buttons.items():
+            rule = self._imb_rule(imb_id)
+            mark = ("★ " if rule.get("watch") else "") + ("$ " if rule.get("watch") and rule.get("buy") else "")
+            b.configure(text=mark + self.imb_by_id[imb_id]["name"],
+                        fg_color=BORDER if imb_id == self.imb_selected else "transparent")
+
+    def _imb_select(self, imb_id):
+        self.imb_selected = imb_id
+        rule = self._imb_rule(imb_id)
+        d = self.imb_by_id[imb_id]
+        self.imb_watch.set(bool(rule.get("watch")))
+        self.imb_buy.set(bool(rule.get("buy")))
+        self.imb_tier.set(imb.TIER_NAMES[int(rule.get("tier", 0))])
+        self.imb_uses.set(str(rule.get("uses", 1)))
+        self.imb_pct.set(str(rule.get("pay_pct", 90)))
+        effect = d.get("effect") or {}
+        values = " / ".join(str(v) for v in effect.get("values") or [])
+        self.imb_title.configure(text=d["name"])
+        self.imb_sub.configure(text=f"{imb.CATEGORY_NAMES.get(d['category'], d['category'])} · {effect.get('label', '')} "
+                                    f"({values} por nível) · entra em: {', '.join(d['kinds'])}")
+        self._imb_marks()
+        self._imb_view = None
+        self._imb_render()
+
+    def _imb_save(self):
+        if not self.imb_selected:
+            return
+        def num(var, default, low, high):
+            try:
+                return max(low, min(high, int(str(var.get()).replace(".", "") or default)))
+            except ValueError:
+                return default
+        rule = {"watch": self.imb_watch.get(), "tier": imb.TIER_NAMES.index(self.imb_tier.get()),
+                "uses": num(self.imb_uses, 1, 1, 100), "buy": self.imb_buy.get(), "pay_pct": num(self.imb_pct, 90, 10, 150)}
+        if rule["buy"] and not rule["watch"]:
+            rule["watch"] = True
+            self.imb_watch.set(True)
+        rules = dict(self.cfg["market"].get("imbuements") or {})
+        if rules.get(self.imb_selected) == rule:
+            return
+        rules[self.imb_selected] = rule
+        self.cfg["market"]["imbuements"] = rules
+        self.save()
+        name = self.imb_by_id[self.imb_selected]["name"]
+        self.log(f"market: {name} {imb.TIER_NAMES[rule['tier']]} x{rule['uses']}: observar={rule['watch']} "
+                 f"comprar={rule['buy']} até {rule['pay_pct']}% do justo")
+        self._imb_marks()
+        self._imb_view = None
+        self._imb_render()
+
+    def _imb_render(self):
+        if not self.imb_selected:
+            return
+        watcher = getattr(self.runner, "market", None) if self.runner.running else None
+        rule = self._imb_rule(self.imb_selected)
+        tier = imb.TIER_NAMES.index(self.imb_tier.get())
+        uses = rule.get("uses", 1)
+        view = (self.imb_selected, tier, uses, watcher.last_run if watcher else None)
+        if view == self._imb_view:
+            return
+        self._imb_view = view
+        board = watcher.board if watcher else {}
+        owned = watcher.owned if watcher else {}
+        p = imb.plan(self.imb_by_id[self.imb_selected], tier, uses, board, owned, self.imb_data.get("rules"))
+        self.imb_tree.delete(*self.imb_tree.get_children())
+        pct = rule.get("pay_pct", 90)
+        for line in p.lines:
+            ev = line.ev
+            tag = (ev.quality if ev and ev.quality else ("ok" if ev and ev.offers else "vazio"))
+            cost = line.cost_missing
+            self.imb_tree.insert("", "end", tags=(tag,), values=(
+                line.display, line.per_use, line.need, line.have, line.missing or "✓",
+                self._gold(line.lowest), self._gold(line.fair), line.on_sale or "-",
+                "-" if not line.missing else ("sem oferta" if cost is None else self._gold(cost))))
+        parts = []
+        if not watcher:
+            parts.append("Ligue o bot para ver os preços e o que você já tem.")
+        elif not rule.get("watch"):
+            parts.append("Marque 'Observar' para o bot ler os preços desses materiais a cada ciclo.")
+        else:
+            total = p.cost_missing
+            parts.append("Materiais completos ✓" if total == 0 else
+                         ("Falta comprar: algum material sem oferta suficiente" if total is None else
+                          f"Comprar o que falta: {self._gold(total)} de ouro"))
+            fair = p.fair_total
+            if fair:
+                parts.append(f"Valor justo dos materiais: {self._gold(fair)}")
+            tokens = [f"{name.title()}: {self._gold(c)}" for name, c in p.token_cost.items() if c is not None]
+            if tokens:
+                parts.append("Pagando com 10 tokens por aplicação → " + " · ".join(tokens))
+            parts.append(f"Taxa do jogo: {self._gold(p.fee)} · compra automática paga até {pct}% do justo")
+        self.imb_summary.configure(text="\n".join(parts))
+
+    def _build_market_items(self, tab):
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("Market.Treeview", background=BG, fieldbackground=BG, foreground=TEXT, rowheight=20,
@@ -446,8 +659,8 @@ class App:
         style.map("Market.Treeview", background=[("selected", BORDER)])
         cols = ("item", "menor", "justo", "desc", "venda", "qual")
         heads = ("Item", "Menor", "Justo", "Desc.", "À venda", "Qualidade")
-        widths = (118, 58, 58, 44, 52, 70)
-        self.market_tree = ttk.Treeview(tab, columns=cols, show="headings", height=9, style="Market.Treeview")
+        widths = (260, 90, 90, 70, 80, 110)
+        self.market_tree = ttk.Treeview(tab, columns=cols, show="headings", height=14, style="Market.Treeview")
         for col, head, width in zip(cols, heads, widths):
             self.market_tree.heading(col, text=head)
             self.market_tree.column(col, width=width, anchor="w" if col == "item" else "e", stretch=col == "item")
@@ -477,26 +690,9 @@ class App:
         for entry in (price, qty):
             entry.bind("<FocusOut>", lambda e: self._save_rule())
             entry.bind("<Return>", lambda e: self._save_rule())
-        self.rule_hint = ctk.CTkLabel(rule, text="", text_color=MUTED, anchor="w", justify="left", wraplength=390)
+        self.rule_hint = ctk.CTkLabel(rule, text="", text_color=MUTED, anchor="w", justify="left", wraplength=820)
         self.rule_hint.grid(row=3, column=0, columnspan=4, sticky="w", padx=8, pady=(0, 6))
 
-        bottom = ctk.CTkFrame(tab, fg_color="transparent")
-        bottom.pack(fill="x", padx=4, pady=(0, 4))
-        self.auto_buy_var = tk.BooleanVar(value=bool(m["auto_buy"]))
-        ctk.CTkSwitch(bottom, text="Compra automática (chave geral)", variable=self.auto_buy_var, progress_color=ACCENT,
-                      text_color=TEXT, command=lambda: self._set_market("auto_buy", self.auto_buy_var.get())
-                      ).grid(row=0, column=0, columnspan=4, sticky="w", pady=2)
-        self.budget_var = tk.StringVar(value=str(m["daily_budget"]))
-        self.reserve_var = tk.StringVar(value=str(m["reserve_gold"]))
-        ctk.CTkLabel(bottom, text="Orçamento/dia", text_color=TEXT).grid(row=1, column=0, sticky="w")
-        budget = ctk.CTkEntry(bottom, textvariable=self.budget_var, width=90, fg_color=PANEL_ALT)
-        budget.grid(row=1, column=1, sticky="w", padx=4)
-        ctk.CTkLabel(bottom, text="Reserva", text_color=TEXT).grid(row=1, column=2, sticky="w", padx=(8, 0))
-        reserve = ctk.CTkEntry(bottom, textvariable=self.reserve_var, width=90, fg_color=PANEL_ALT)
-        reserve.grid(row=1, column=3, sticky="w", padx=4)
-        for entry, key, var in ((budget, "daily_budget", self.budget_var), (reserve, "reserve_gold", self.reserve_var)):
-            entry.bind("<FocusOut>", lambda e, k=key, v=var: self._save_market_number(k, v))
-            entry.bind("<Return>", lambda e, k=key, v=var: self._save_market_number(k, v))
         self._market_rows = {}
         self._market_view = None
         self._market_selected_name = None
@@ -626,7 +822,7 @@ class App:
         self.credentials = Credentials(os.path.join(ROOT, "credentials.json"))
         ctk.CTkLabel(tab, text="Login do Drakoria pra o bot entrar sozinho se o jogo cair ou deslogar. A senha fica "
                                "criptografada pelo Windows (só abre neste PC, no seu usuário) e nunca vai pro log.",
-                     text_color=MUTED, wraplength=380, justify="left").pack(anchor="w", padx=8, pady=(8, 10))
+                     text_color=MUTED, wraplength=840, justify="left").pack(anchor="w", padx=8, pady=(8, 10))
         form = ctk.CTkFrame(tab, fg_color="transparent")
         form.pack(fill="x", padx=8)
         form.columnconfigure(1, weight=1)
