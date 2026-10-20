@@ -7,6 +7,7 @@ import queue
 import sys
 import threading
 import tkinter as tk
+from tkinter import ttk
 
 import customtkinter as ctk
 
@@ -43,7 +44,7 @@ class App:
     def __init__(self, root, runner_factory=Runner):
         self.root = root
         root.title(f"DRAKORIA BOT  v{VERSION}")
-        root.geometry("440x580")
+        root.geometry("470x620")
         root.minsize(420, 520)
         root.configure(fg_color=BG)
         icon = os.path.join(resource_dir(), "icon.ico")
@@ -73,11 +74,14 @@ class App:
         self.tabs = ctk.CTkTabview(root, fg_color=PANEL, segmented_button_selected_color=ACCENT,
                                    segmented_button_selected_hover_color=ACCENT_HOVER, text_color=DARK_TEXT)
         self.tabs.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        for name in ("Painel", "Regras", "Objetivos", "Login", "Log"):
+        for name in ("Painel", "Regras", "Objetivos", "Market", "Login", "Log"):
             self.tabs.add(name)
         self._build_panel(self.tabs.tab("Painel"))
         self._build_rules(self.tabs.tab("Regras"))
         self._build_goals(self.tabs.tab("Objetivos"))
+        self._build_market(self.tabs.tab("Market"))
+        if hasattr(self.runner, "notify"):
+            self.runner.notify = self.notify
         self._build_login(self.tabs.tab("Login"))
         self._build_log(self.tabs.tab("Log"))
 
@@ -221,6 +225,7 @@ class App:
                     f"Prey: {' · '.join(f'{c} {b} ({t})' for c, b, t in snap.get('prey') or []) or '-'}\n"
                     f"Tasks: {' · '.join(f'{n} {h}/{q}' for n, h, q in snap.get('tasks') or []) or '-'}"))
                 self.goal_status.configure(text=f"Objetivo agora: {snap.get('goal') or 'nenhum (caça da aba Regras)'}")
+        self._refresh_market()
         self.root.after(1000, self._poll_state)
 
     # ---------------------------------------------------------------- regras
@@ -424,6 +429,197 @@ class App:
         self.cfg["goals"]["bestiary"] = [c for c in self.creature_order if self.beast_vars[c].get()]
         self.save()
         self.log(f"bestiary escolhido: {', '.join(self.cfg['goals']['bestiary']) or 'nenhum'}")
+
+    # ---------------------------------------------------------------- market
+    def _build_market(self, tab):
+        m = self.cfg["market"]
+        top = ctk.CTkFrame(tab, fg_color="transparent")
+        top.pack(fill="x", padx=4, pady=(4, 2))
+        self.market_status = ctk.CTkLabel(top, text="Ligue o bot para coletar os preços.", text_color=MUTED, anchor="w")
+        self.market_status.pack(side="left")
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Market.Treeview", background=BG, fieldbackground=BG, foreground=TEXT, rowheight=20,
+                        borderwidth=0, font=("Segoe UI", 9))
+        style.configure("Market.Treeview.Heading", background=PANEL_ALT, foreground=MUTED, borderwidth=0,
+                        font=("Segoe UI", 9, "bold"))
+        style.map("Market.Treeview", background=[("selected", BORDER)])
+        cols = ("item", "menor", "justo", "desc", "venda", "qual")
+        heads = ("Item", "Menor", "Justo", "Desc.", "À venda", "Qualidade")
+        widths = (118, 58, 58, 44, 52, 70)
+        self.market_tree = ttk.Treeview(tab, columns=cols, show="headings", height=9, style="Market.Treeview")
+        for col, head, width in zip(cols, heads, widths):
+            self.market_tree.heading(col, text=head)
+            self.market_tree.column(col, width=width, anchor="w" if col == "item" else "e", stretch=col == "item")
+        for q, color in (("excelente", OK), ("muito boa", ACCENT), ("boa", "#c9b26b"), ("vazio", MUTED)):
+            self.market_tree.tag_configure(q, foreground=color)
+        self.market_tree.pack(fill="both", expand=True, padx=4)
+        self.market_tree.bind("<<TreeviewSelect>>", lambda e: self._market_selected())
+
+        rule = ctk.CTkFrame(tab, fg_color=PANEL_ALT, corner_radius=6)
+        rule.pack(fill="x", padx=4, pady=4)
+        self.rule_title = ctk.CTkLabel(rule, text="Selecione um item", text_color=TEXT, font=("Segoe UI", 12, "bold"), anchor="w")
+        self.rule_title.grid(row=0, column=0, columnspan=4, sticky="w", padx=8, pady=(6, 2))
+        self.rule_watch = tk.BooleanVar()
+        self.rule_buy = tk.BooleanVar()
+        self.rule_price = tk.StringVar()
+        self.rule_qty = tk.StringVar()
+        ctk.CTkCheckBox(rule, text="Observar (alerta)", variable=self.rule_watch, fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                        text_color=TEXT, command=self._save_rule).grid(row=1, column=0, columnspan=2, sticky="w", padx=8)
+        ctk.CTkCheckBox(rule, text="Comprar automático", variable=self.rule_buy, fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                        text_color=TEXT, command=self._save_rule).grid(row=1, column=2, columnspan=2, sticky="w")
+        ctk.CTkLabel(rule, text="Preço máx.", text_color=TEXT).grid(row=2, column=0, sticky="w", padx=8, pady=4)
+        price = ctk.CTkEntry(rule, textvariable=self.rule_price, width=80, fg_color=BG)
+        price.grid(row=2, column=1, sticky="w")
+        ctk.CTkLabel(rule, text="Quantidade", text_color=TEXT).grid(row=2, column=2, sticky="w", padx=(8, 4))
+        qty = ctk.CTkEntry(rule, textvariable=self.rule_qty, width=60, fg_color=BG)
+        qty.grid(row=2, column=3, sticky="w")
+        for entry in (price, qty):
+            entry.bind("<FocusOut>", lambda e: self._save_rule())
+            entry.bind("<Return>", lambda e: self._save_rule())
+        self.rule_hint = ctk.CTkLabel(rule, text="", text_color=MUTED, anchor="w", justify="left", wraplength=390)
+        self.rule_hint.grid(row=3, column=0, columnspan=4, sticky="w", padx=8, pady=(0, 6))
+
+        bottom = ctk.CTkFrame(tab, fg_color="transparent")
+        bottom.pack(fill="x", padx=4, pady=(0, 4))
+        self.auto_buy_var = tk.BooleanVar(value=bool(m["auto_buy"]))
+        ctk.CTkSwitch(bottom, text="Compra automática (chave geral)", variable=self.auto_buy_var, progress_color=ACCENT,
+                      text_color=TEXT, command=lambda: self._set_market("auto_buy", self.auto_buy_var.get())
+                      ).grid(row=0, column=0, columnspan=4, sticky="w", pady=2)
+        self.budget_var = tk.StringVar(value=str(m["daily_budget"]))
+        self.reserve_var = tk.StringVar(value=str(m["reserve_gold"]))
+        ctk.CTkLabel(bottom, text="Orçamento/dia", text_color=TEXT).grid(row=1, column=0, sticky="w")
+        budget = ctk.CTkEntry(bottom, textvariable=self.budget_var, width=90, fg_color=PANEL_ALT)
+        budget.grid(row=1, column=1, sticky="w", padx=4)
+        ctk.CTkLabel(bottom, text="Reserva", text_color=TEXT).grid(row=1, column=2, sticky="w", padx=(8, 0))
+        reserve = ctk.CTkEntry(bottom, textvariable=self.reserve_var, width=90, fg_color=PANEL_ALT)
+        reserve.grid(row=1, column=3, sticky="w", padx=4)
+        for entry, key, var in ((budget, "daily_budget", self.budget_var), (reserve, "reserve_gold", self.reserve_var)):
+            entry.bind("<FocusOut>", lambda e, k=key, v=var: self._save_market_number(k, v))
+            entry.bind("<Return>", lambda e, k=key, v=var: self._save_market_number(k, v))
+        self._market_rows = {}
+        self._market_view = None
+        self._market_selected_name = None
+
+    def _gold(self, value):
+        return "-" if value is None else f"{int(value):,}".replace(",", ".")
+
+    def _refresh_market(self):
+        watcher = getattr(self.runner, "market", None) if self.runner.running else None
+        if watcher is None:
+            return
+        board, listing = watcher.board, watcher.listing
+        view = (watcher.last_run, len(listing), watcher.error, tuple(sorted(self.cfg["market"].get("rules", {}))))
+        if view == self._market_view:
+            return
+        self._market_view = view
+        if watcher.error:
+            self.market_status.configure(text=f"Erro: {watcher.error}", text_color=DANGER)
+        elif watcher.last_run:
+            when = datetime.datetime.fromtimestamp(watcher.last_run).strftime("%H:%M")
+            self.market_status.configure(text=f"{len(listing)} itens · atualizado {when}", text_color=MUTED)
+        rules = self.cfg["market"].get("rules") or {}
+        rows = []
+        for row in listing:
+            key = (row["name"] or "").casefold()
+            ev = board.get(key)
+            rows.append((0 if row["sell_qty"] else 1, -ev.discount if ev and ev.discount is not None else 9, key, row, ev))
+        rows.sort(key=lambda r: (r[0], r[1], r[2]))
+        selected = self._market_selected_name
+        self.market_tree.delete(*self.market_tree.get_children())
+        self._market_rows = {}
+        for _, _, key, row, ev in rows:
+            mark = ("★ " if rules.get(key, {}).get("watch") else "") + ("$ " if rules.get(key, {}).get("buy") else "")
+            values = (mark + (row["name"] or "?"), self._gold(ev.lowest_sell if ev else row["lowest_sell"]),
+                      self._gold(ev.fair if ev else None),
+                      f"{ev.discount:.0%}" if ev and ev.discount is not None else "-", row["sell_qty"] or "-",
+                      (ev.quality if ev and ev.quality else "-"))
+            tag = ev.quality if ev and ev.quality else ("vazio" if not row["sell_qty"] else "")
+            iid = self.market_tree.insert("", "end", values=values, tags=(tag,))
+            self._market_rows[iid] = key
+            if key == selected:
+                self.market_tree.selection_set(iid)
+
+    def _market_selected(self):
+        sel = self.market_tree.selection()
+        if not sel:
+            return
+        key = self._market_rows.get(sel[0])
+        self._market_selected_name = key
+        rule = (self.cfg["market"].get("rules") or {}).get(key, {})
+        self.rule_title.configure(text=key)
+        self.rule_watch.set(bool(rule.get("watch")))
+        self.rule_buy.set(bool(rule.get("buy")))
+        self.rule_price.set(str(rule.get("max_price") or ""))
+        self.rule_qty.set(str(rule.get("quantity") or ""))
+        watcher = getattr(self.runner, "market", None)
+        ev = watcher.board.get(key) if watcher else None
+        bought = 0
+        try:
+            bought = watcher.store.bought(ev.item_id) if watcher and ev else 0
+        except Exception:
+            pass
+        if ev and ev.fair:
+            trend = f" · tendência {ev.trend:+.0%}" if ev.trend is not None else ""
+            per_day = f" · {ev.per_day:.0f}/dia" if ev.per_day else ""
+            self.rule_hint.configure(text=f"Justo {self._gold(ev.fair)}{trend}{per_day}. Sem preço máx. o bot usa "
+                                          f"{self._gold(ev.suggested_max)} (20% abaixo). Comprados pelo bot: {bought}.")
+        else:
+            self.rule_hint.configure(text="Sem negócios no histórico: o bot não sabe o preço justo. "
+                                          "Pra comprar automático, informe o preço máximo.")
+
+    def _save_rule(self):
+        key = self._market_selected_name
+        if not key:
+            return
+        def num(var):
+            try:
+                return max(0, int(var.get().replace(".", "") or 0))
+            except ValueError:
+                return 0
+        rule = {"watch": self.rule_watch.get(), "buy": self.rule_buy.get(), "max_price": num(self.rule_price),
+                "quantity": num(self.rule_qty)}
+        rules = dict(self.cfg["market"].get("rules") or {})
+        if rules.get(key) == rule:
+            return
+        if any(rule.values()):
+            rules[key] = rule
+        else:
+            rules.pop(key, None)
+        self.cfg["market"]["rules"] = rules
+        self.save()
+        self._market_view = None
+        self.log(f"market: regra de {key}: observar={rule['watch']} comprar={rule['buy']} "
+                 f"máx={rule['max_price'] or 'sugerido'} qtd={rule['quantity']}")
+
+    def _set_market(self, key, value):
+        self.cfg["market"][key] = value
+        self.save()
+        self.log(f"market: {key} = {value}")
+
+    def _save_market_number(self, key, var):
+        try:
+            value = max(0, int(var.get().replace(".", "")))
+        except ValueError:
+            var.set(str(self.cfg["market"][key]))
+            return
+        if value != self.cfg["market"][key]:
+            self._set_market(key, value)
+
+    def notify(self, title, text):
+        """Aviso de oportunidade/compra: balão da bandeja (se estiver na bandeja) + bipe."""
+        def show():
+            if self.tray_icon is not None:
+                try:
+                    self.tray_icon.notify(text, title)
+                except Exception:
+                    pass
+            try:
+                import winsound
+                winsound.MessageBeep()
+            except Exception:
+                pass
+        self.call_ui(show)
 
     # ----------------------------------------------------------------- login
     def _build_login(self, tab):

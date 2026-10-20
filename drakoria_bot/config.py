@@ -38,6 +38,21 @@ DEFAULTS = {
         "difficulty": {},                 # task/criatura -> dificuldade (vazio = a da aba Regras)
         "bestiary_minutes": 30,           # rele os abates na Cyclopedia (o rastreador some com task ativa)
     },
+    # Marketplace (aba Market): observa categorias, guarda historico (market.db), alerta e compra com permissao
+    "market": {
+        "enabled": True,
+        "interval_minutes": 5,
+        "categories": ["Imbuement Materials"],
+        "good": 0.15, "great": 0.25, "excellent": 0.40,   # desconto vs preço justo: boa / muito boa / excelente
+        "trend_down": 0.10,                # preço caindo mais que isso derruba um nivel
+        "alert_min_quality": "boa",
+        "alerts_watched_only": False,      # True = so' alerta itens marcados como observados
+        "auto_buy": False,                 # chave GERAL da compra automatica (desligada por padrao)
+        "daily_budget": 200000,            # ouro maximo gasto pelo bot por dia
+        "reserve_gold": 1000000,           # nunca deixa o ouro abaixo disso
+        "claim": True,                     # resgata a compra da Caixa do Mercado pro Banco
+        "rules": {},                       # nome (minusculas) -> {watch, buy, max_price, quantity}
+    },
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s
     "unknown_reload_seconds": 120,        # estado desconhecido por mais disso: recarrega

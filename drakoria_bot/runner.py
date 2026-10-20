@@ -6,6 +6,8 @@ import threading
 from .engine import Engine
 from .idledeck import Pool
 from .credentials import Credentials
+from .market.store import Store as MarketStore
+from .market.watcher import MarketWatcher
 from .memory import Memory
 from .paths import app_dir
 
@@ -20,6 +22,8 @@ class Runner:
         self.stop_event = threading.Event()
         self.engine = None
         self.connected = False
+        self.notify = None             # a interface liga (aviso na bandeja)
+        self.market = None
 
     @property
     def running(self):
@@ -44,7 +48,9 @@ class Runner:
         try:
             pool.open(launch=True, stop=self.stop_event)
             self.connected = True
-            self.engine = Engine(pool.refresh(), self.cfg, self.log, refresh=pool.refresh,
+            self.market = MarketWatcher(self.cfg["market"], MarketStore(os.path.join(ROOT, "market.db")), self.log,
+                                        notify=lambda title, text: self.notify and self.notify(title, text))
+            self.engine = Engine(pool.refresh(), self.cfg, self.log, refresh=pool.refresh, market=self.market,
                                  credentials=Credentials(os.path.join(ROOT, "credentials.json")),
                                  memory=Memory(os.path.join(ROOT, "memory.json")))
             self.log("bot iniciado")

@@ -12,7 +12,8 @@ LOOT_SETTINGS = "loot_settings"
 
 
 class Engine:
-    def __init__(self, accounts, cfg, log=print, refresh=None, memory=None, credentials=None, clock=time.time):
+    def __init__(self, accounts, cfg, log=print, refresh=None, memory=None, credentials=None, clock=time.time,
+                 market=None):
         self.accounts = accounts
         self.cfg = cfg
         self.log = log
@@ -20,6 +21,7 @@ class Engine:
         self.memory = memory
         self.credentials = credentials
         self.clock = clock
+        self.market = market            # MarketWatcher (opcional)
         self.hunts = H.load_hunts()
         self.tasks = G.load_tasks()
         self.active_tasks = (memory.get("active_tasks") if memory else None) or []
@@ -116,6 +118,13 @@ class Engine:
                     self.tick(acc)
                 except Exception as error:
                     self.log(f"erro lendo a pagina: {error}")
+                    continue
+                if self.market and self.snapshot.get("phase") not in ("login", "error", "unknown", "-"):
+                    try:
+                        if self.market.tick(acc.page, self.clock()):
+                            self.snapshot["market"] = self.clock()
+                    except Exception as error:
+                        self.log(f"market: erro: {error}")
             stop.wait(self.cfg["poll_seconds"])
 
     def tick(self, acc):

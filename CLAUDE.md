@@ -235,3 +235,38 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   Icones: /assets/items/<categoria>/<Nome>.gif. Hunt Analyzer tambem usa precos (hunt-analyzer-market-prices.js).
 - Caminho sugerido: fetch DENTRO da aba logada via CDP (page.evaluate) - sem abrir janela nem clicar; guardar em SQLite e
   mostrar num painel local (modelo: matheusromano6/baiakidle/market: api/scanner/store/server/dashboard).
+
+## Marketplace - compra sem clique VALIDADA (20/10/2026 ~22:17, autorizada pelo usuario: Rope Belt 1x, max 10 p/ testes)
+- Itens de imbuement: categoria 'Imbuement Materials' (71 itens; so ~6 com oferta em 20/10, mercado novo).
+- items/<id>.statistics: windowDays 30, trades {vwap, min, max, quantity, trades, volume}, sellOffers/buyOffers {average,
+  min, max, offers}, daily [{day, vwap_price_gold, minimum/maximum_price_gold, quantity_traded, trades_count, gold_volume}].
+  Ofertas: id, side SELL/BUY, unitPriceGold, remainingQuantity, status ACTIVE/PARTIAL, mine, version, expiresAt.
+- Rotas de escrita (marketplace-ui.js): POST orders/{id}/accept {quantity, instanceId:null, expectedVersion: order.version,
+  deviceId, clientBuild}; POST me/deliveries/{id}/claim {deviceId, clientBuild}; claim-all; orders (criar); orders/{id}/cancel;
+  wallet/withdraw; watchlist; alerts. Header 'Idempotency-Key'. NAO chamar a URL crua: o jogo usa authoritativeMutation()
+  = game.stop(); game.save(); client.flushRequired(); request; adoptServerSave(payload.save); game.replaceState(); start.
+  Chamar a API por fora do save deixaria o save local sobrescrever a compra.
+- Instancia viva: import('/System/Marketplace/marketplace-ui.js?build=...') -> MarketplaceUI.prototype (classe compartilhada);
+  embrulhar os metodos do prototype guardando 'this' em window.__drkMarket; o jogo so' chama ao ABRIR o Marketplace
+  (nav data-nav=market) -> abrir 1x por carga da pagina (~0,8s) e fechar. Depois: m.authoritativeMutation(path, body).
+  m.client.deviceId / m.client.clientBuild ('v1.7.2030-online416'). Hook some ao recarregar a aba.
+- Teste: 1 Rope Belt a 25.000 (oferta mais barata): ouro 58.181.857 -> 58.156.857; entrega 'PENDING' na Caixa do Mercado ->
+  claim -> 'Entrega coletada no Banco' (assets mostra a rope belt). Jogo seguiu rodando, ouro do topo consistente.
+
+## v1.4.0 - Market (20/10/2026)
+- drakoria_bot/market/: api.py (fetch/hook/authoritativeMutation pela aba logada), analysis.py (puro), store.py (SQLite
+  market.db: snapshot, daily, purchase, alert), watcher.py (a cada 5 min: categorias -> detalhe dos itens com oferta ou
+  observados -> avalia -> historico -> alerta 1x por oferta/preço/qualidade -> compra se chave geral + regra do item).
+- Preço justo = min(VWAP janela, VWAP recente = ultimo terço dos dias), do diario LIMPO (dias fora de 1/3..3x a mediana
+  descartados). Qualidade: boa 15% / muito boa 25% / excelente 40% de desconto; tendencia <= -10% derruba 1 nivel.
+- Compra: chave geral market.auto_buy (padrao OFF) + regra {watch, buy, max_price, quantity} por item (nome minusculo).
+  Sem max_price usa 20% abaixo do justo; sem justo nao compra. Limites: quantidade total (compras do bot), orçamento
+  diario, reserva de ouro, ofertas mais baratas primeiro; erro para o ciclo. Resgata a entrega pro Banco.
+- Aba Market: tabela (Item, Menor, Justo, Desc., À venda, Qualidade; ★ observado, $ compra), regra do item selecionado,
+  chave geral, orçamento/dia, reserva. Aviso: balao da bandeja + bipe.
+- Dados reais 20/10: Rope Belt justo 25k (queda 43k->25k), Protective Charm justo ~39,4k (sem o negocio a 1 gold),
+  Silencer Claws 20k, Peacock Feather Fan sem historico. Nenhuma oportunidade no momento.
+- ATENCAO sessao unica: logar no navegador do app DESLOGOU a aba do IdleDeck (20/10). Usar so' o IdleDeck com o bot.
+- 20/10: as 4 paginas do Huntera no IdleDeck nao respondiam ao CDP -> connect_over_cdp do Playwright travava (todos os
+  bots). A pagina do Drakoria respondia. MarketApi (wrapper Python) ainda NAO rodou ao vivo no IdleDeck por isso; os
+  scripts JS dele foram validados no navegador do app (hook em pagina recem-carregada: 0,9s; leitura; compra; resgate).
