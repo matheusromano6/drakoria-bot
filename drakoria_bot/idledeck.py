@@ -10,6 +10,8 @@ from .account import Account
 
 from .selectors import GAME_HOST
 
+CONNECT_TIMEOUT_MS = 45000
+
 
 def port_open(cdp_url, timeout=2):
     try:
@@ -36,7 +38,17 @@ class Pool:
             if not launch or not launcher.launch(self.cdp_url, lambda: port_open(self.cdp_url), self.log, stop):
                 raise RuntimeError(f"IdleDeck sem depuracao remota em {self.cdp_url}")
         self._pw = sync_playwright().start()
-        self.browser = self._pw.chromium.connect_over_cdp(self.cdp_url)
+        self.log("Conectando ao IdleDeck...")
+        try:
+            # o Playwright precisa de resposta de TODAS as abas do IdleDeck; uma aba travada (de qualquer jogo)
+            # segurava a conexao pra sempre sem log nenhum (visto 20/10 com as abas do Huntera)
+            self.browser = self._pw.chromium.connect_over_cdp(self.cdp_url, timeout=CONNECT_TIMEOUT_MS)
+        except Exception as error:
+            self.close()
+            if "Timeout" in type(error).__name__ or "Timeout" in str(error):
+                raise RuntimeError(f"o IdleDeck nao respondeu em {CONNECT_TIMEOUT_MS // 1000}s: alguma aba (de "
+                                   "qualquer jogo) esta travada. Recarregue as abas ou reinicie o IdleDeck.") from None
+            raise
 
     def close(self):
         try:

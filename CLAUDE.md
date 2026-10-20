@@ -270,3 +270,6 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
 - 20/10: as 4 paginas do Huntera no IdleDeck nao respondiam ao CDP -> connect_over_cdp do Playwright travava (todos os
   bots). A pagina do Drakoria respondia. MarketApi (wrapper Python) ainda NAO rodou ao vivo no IdleDeck por isso; os
   scripts JS dele foram validados no navegador do app (hook em pagina recem-carregada: 0,9s; leitura; compra; resgate).
+- v1.4.1 (20/10 19:40): Pool.open loga 'Conectando ao IdleDeck...' e desiste em 45s (CONNECT_TIMEOUT_MS) com mensagem
+  clara. Antes o bot ficava mudo em 'Conectando...' com as abas do Huntera travadas. Usuario abriu a v1.4.0 de
+  Downloads\DrakoriaBot-windows com a v1.3.0 de release\ ainda aberta (2 bots): fechar o antigo.
