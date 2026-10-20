@@ -41,7 +41,8 @@ DEFAULTS = {
     # Marketplace (aba Market): observa categorias, guarda historico (market.db), alerta e compra com permissao
     "market": {
         "enabled": True,
-        "interval_minutes": 2,
+        "interval_minutes": 2,             # varredura completa (reserva; o ao vivo reage na hora)
+        "live": True,                      # escuta os eventos do mercado e reage em ~1-2 s
         "categories": ["Imbuement Materials"],
         "good": 0.15, "great": 0.25, "excellent": 0.40,   # desconto vs preço justo: boa / muito boa / excelente
         "trend_down": 0.10,                # preço caindo mais que isso derruba um nivel

@@ -298,3 +298,13 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
 - Validado ao vivo 20/10 20:07 (Brave 9230, conta lv 241, so leitura): 71 listados, 7 avaliados, owned rope belt 192 /
   silencer claws 36 / silver token 3; Void Powerful: falta so 5 Some Grimeleech Wings (sem oferta, justo 200k).
 - Proximo teste combinado com o usuario: outra conta cria oferta barata -> o bot (Market ligado, compra ligada) compra.
+
+## v1.6.0 - Market ao vivo (20/10/2026 ~20:55)
+- Por que a oferta de 1 Vampire Teeth 'nao apareceu': config do usuario com interval_minutes 5 (salvo antes do padrao
+  mudar), Vampirism marcado so' as 20:49 (proxima varredura 5 min depois) e compra desligada. E a conta ja tinha 207
+  Vampire Teeth (Vampirism pede 25): pelo imbuement nao falta nada -> nao compra. Pra testar compra: regra do item.
+- /api/v1/market/events = EventSource (o mesmo da tela): evento 'market' JSON {type: market_order_filled|..., orderId,
+  marketKey 'item:<id>:<variante>', tradeId, at}. O bot abre o EventSource na aba (window.__drkStream), guarda num
+  buffer (window.__drkEvents) e o motor esvazia a cada 1 s entre as leituras do jogo (Engine.run). Evento de item
+  observado -> detail so' daquele item -> loga mudança de menor preço, alerta, compra. Varredura completa vira reserva.
+- Validado ao vivo 20:54: alerta MUITO BOA Vampire Teeth 10.000 (justo 20.000, -50%), 4 eventos ao vivo em 90 s.

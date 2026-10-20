@@ -61,6 +61,33 @@ MUTATE_JS = r"""async ([path, body]) => {
 }"""
 
 
+# Fluxo ao vivo do mercado (o mesmo EventSource que a tela do jogo usa): cada mudança vira um evento 'market'
+# {"type": "market_order_filled"|..., "orderId", "marketKey": "item:<id>:<variante>", "at"}. Os eventos ficam num buffer
+# da pagina e o bot so' esvazia o buffer (leitura local, sem ir ao servidor).
+STREAM_JS = r"""() => {
+  const s = window.__drkStream;
+  if (s && s.readyState !== 2) return s.readyState === 1 ? 'aberto' : 'conectando';
+  window.__drkEvents = window.__drkEvents || [];
+  const es = new EventSource('/api/v1/market/events', {withCredentials: true});
+  es.addEventListener('market', (e) => {
+    let data = null; try { data = JSON.parse(e.data); } catch (err) { data = {raw: String(e.data).slice(0, 200)}; }
+    window.__drkEvents.push(data);
+    if (window.__drkEvents.length > 500) window.__drkEvents.splice(0, window.__drkEvents.length - 500);
+  });
+  window.__drkStream = es;
+  return 'novo';
+}"""
+
+DRAIN_JS = r"""() => { const out = window.__drkEvents || []; window.__drkEvents = []; return out; }"""
+
+
+def item_id_of(event):
+    """'item:2195:abc' -> '2195' (None pra Drako Coin e afins)."""
+    key = (event or {}).get("marketKey") or ""
+    parts = key.split(":")
+    return parts[1] if len(parts) >= 2 and parts[0] == "item" else None
+
+
 class MarketError(RuntimeError):
     pass
 
@@ -114,6 +141,14 @@ class MarketApi:
 
     def deliveries(self):
         return self._get("/api/v1/market/me/deliveries").get("deliveries") or []
+
+    def stream(self):
+        """Liga (ou mantem) o fluxo ao vivo; devolve 'novo' / 'aberto' / 'conectando'."""
+        return self.page.evaluate(STREAM_JS)
+
+    def events(self):
+        """Eventos recebidos desde a ultima chamada."""
+        return self.page.evaluate(DRAIN_JS) or []
 
     # ------------------------------------------------------------ escrita (fluxo seguro do jogo)
     def ensure(self):

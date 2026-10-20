@@ -125,7 +125,15 @@ class Engine:
                             self.snapshot["market"] = self.clock()
                     except Exception as error:
                         self.log(f"market: erro: {error}")
-            stop.wait(self.cfg["poll_seconds"])
+            # entre uma leitura e outra do jogo, o Market reage aos eventos ao vivo a cada ~1 s
+            end = self.clock() + self.cfg["poll_seconds"]
+            while not stop.is_set() and self.clock() < end:
+                if self.market and self.accounts and self.snapshot.get("phase") not in ("login", "error", "unknown", "-"):
+                    try:
+                        self.market.react(self.accounts[0].page, self.clock())
+                    except Exception as error:
+                        self.log(f"market: erro ao vivo: {error}")
+                stop.wait(1)
 
     def tick(self, acc):
         st = acc.read()

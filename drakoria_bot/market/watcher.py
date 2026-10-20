@@ -8,7 +8,7 @@ resgata a entrega pro Banco. Qualquer erro para as compras desse ciclo.
 """
 from . import analysis as A
 from . import imbuements as I
-from .api import MarketApi, MarketError
+from .api import MarketApi, MarketError, item_id_of
 
 
 def rule_for(cfg, name):
@@ -32,6 +32,64 @@ class MarketWatcher:
             self.imb = I.load()
         except Exception:
             self.imb = {"imbuements": [], "rules": {}}
+
+    def watched_ids(self):
+        """ids dos itens que interessam agora: com regra (observar/comprar) ou material de imbuement observado."""
+        names = set(I.watched_materials(self.cfg, self.imb))
+        names.update(k for k, r in (self.cfg.get("rules") or {}).items() if r.get("watch") or r.get("buy"))
+        return {row["id"]: row["name"] for row in self.listing if (row["name"] or "").casefold() in names}
+
+    def react(self, page, now):
+        """Chamado a cada ~1 s: esvazia os eventos ao vivo e reavalia NA HORA so' os itens observados que mudaram."""
+        if not self.cfg.get("enabled") or not self.cfg.get("live", True) or not self.listing:
+            return 0
+        api = self.api_factory(page)
+        try:
+            state = api.stream()
+            if state == "novo":
+                self.log("market: acompanhando o mercado ao vivo")
+            events = api.events()
+        except Exception as error:
+            self.error = f"ao vivo: {error}"
+            return 0
+        if not events:
+            return 0
+        self.events_seen = getattr(self, "events_seen", 0) + len(events)
+        watched = self.watched_ids()
+        ids = []
+        for event in events:
+            item = item_id_of(event)
+            if item in watched and item not in ids:
+                ids.append(item)
+        if not ids:
+            return 0
+        try:
+            if any(r.get("buy") for r in (self.cfg.get("imbuements") or {}).values()):
+                self.owned = api.assets()
+            wallet = None
+            for item in ids:
+                detail = api.detail(item)
+                ev = A.evaluate(detail, self.cfg)
+                self.store.save_evaluation(ev, detail)
+                before = self.board.get(ev.name.casefold())
+                self.board[ev.name.casefold()] = ev
+                if (before.lowest_sell if before else None) != ev.lowest_sell or (before.sell_qty if before else 0) != ev.sell_qty:
+                    price = f"{int(ev.lowest_sell):,}".replace(",", ".") if ev.lowest_sell else "sem oferta"
+                    fair = f" (justo {int(ev.fair):,})".replace(",", ".") if ev.fair else " (sem histórico de preço)"
+                    self.log(f"market ao vivo: {ev.name}: menor {price}, {ev.sell_qty} à venda{fair}")
+                rule = rule_for(self.cfg, ev.name)
+                self._alert(ev, rule)
+                if self.cfg.get("auto_buy") and rule.get("buy") and ev.offers:
+                    if wallet is None:
+                        wallet = A._num((api.overview().get("wallet") or {}).get("goldSpendable")) or 0
+                    wallet = self._buy(api, ev, rule, wallet)
+            if self.cfg.get("auto_buy"):
+                self._buy_imbuements(api, wallet)
+            self.last_live = now
+        except MarketError as error:
+            self.error = str(error)
+            self.log(f"market (ao vivo): {error}")
+        return len(ids)
 
     def due(self, now):
         return self.last_run is None or now - self.last_run >= self.cfg.get("interval_minutes", 5) * 60
@@ -118,8 +176,8 @@ class MarketWatcher:
         offer = ev.offers[0]
         if not self.store.should_alert(ev.item_id, offer["id"], ev.lowest_sell, ev.quality):
             return
-        text = (f"{ev.name}: {int(ev.lowest_sell):,} (justo {int(ev.fair):,}, -{ev.discount:.0%}) · "
-                f"{ev.sell_qty} à venda").replace(",", ".")
+        gold = lambda v: f"{int(v):,}".replace(",", ".")
+        text = f"{ev.name}: {gold(ev.lowest_sell)} (justo {gold(ev.fair)}, -{ev.discount:.0%}) · {ev.sell_qty} à venda"
         self.log(f"market: oportunidade {ev.quality.upper()} - {text}")
         self.notify(f"Oportunidade {ev.quality}", text)
 
