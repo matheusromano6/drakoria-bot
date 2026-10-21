@@ -55,6 +55,7 @@ DEFAULTS = {
         # imbuements observados: id -> {watch, tier 0..2, uses (aplicações), buy, pay_pct (% do justo que aceita pagar)}
         "imbuements": {},
     },
+    "user_idle_seconds": 60,              # janela do usuario aberta: o bot espera isso depois que ela fechar
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s
     "unknown_reload_seconds": 120,        # estado desconhecido por mais disso: recarrega

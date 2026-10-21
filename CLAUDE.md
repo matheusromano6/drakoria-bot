@@ -345,3 +345,13 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
 - Imbuements: sem nivel/aplicações; tabela Nível/Material/Tenho/Menor/Justo/Desc./À venda/Qualidade dos 3 materiais
   + 'Oportunidade agora (até X% do justo)'. Regra salva: {watch, buy, pay_pct}.
 - Regras: sem 'Modo' (cfg mode ignorado; config antiga 'Só vigiar' NAO deixa o bot parado): sempre caça ou treina.
+
+## v1.9.1 - bot nao atrapalha o usuario (20/10/2026 ~22:55)
+- BUG (desde v1.2.1): dismiss_popups FECHAVA qualquer janela visivel que nao fosse aviso conhecido -> fechava a
+  lista de caças (e outras) que o USUARIO abria. Agora so' clica avisos conhecidos (Coletar e continuar / OK /
+  Continuar...) e nunca fecha janela.
+- Janela do usuario aberta (.modal/.tibia-window/.workspace-window visivel que nao e' aviso) -> o bot nao mexe na
+  tela (loot, tasks, bestiary, prey, caça, treino) enquanto ela estiver aberta e por mais user_idle_seconds (60 s)
+  depois; log 1x 'janela aberta pelo usuário'. O Market ao vivo continua (usa a API, nao a tela).
+- Teste ao vivo 22:52: o codigo novo esperou, mas a lista fechou porque o bot do usuario (v1.9.0) estava rodando na
+  mesma aba. Nesse meio tempo o bot dele comprou 13 some grimeleech wings a 10k (justo 200k) - oportunidade Void.

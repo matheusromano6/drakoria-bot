@@ -38,6 +38,8 @@ class FakeAccount:
 
     def dismiss_popups(self):
         self._call("dismiss")
+        if getattr(self, "user_window", False):
+            return None                                   # janela do usuario: o bot nao fecha
         self.st.modals = []
         return "relatório offline coletado"
 
@@ -515,6 +517,27 @@ class GoalDifficultyTest(unittest.TestCase):
         self.assertIn("read_bestiary", names(acc))
         self.assertTrue(any("bestiary rotworm completo" in line for line in logs))
         self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Cyclops"))
+
+
+class UserWindowTest(unittest.TestCase):
+    def test_user_window_is_never_closed_and_bot_waits(self):
+        acc = FakeAccount(phase="city")
+        acc.user_window = True
+        acc.st.modals = ["Escolher Hunt"]               # o usuario abriu a lista de caças
+        eng, clock, logs = make(acc, hunt="Troll Cave")
+        eng.tick(acc)
+        eng.tick(acc)
+        self.assertEqual(set(names(acc)), {"dismiss"})   # nem loot, nem caça: so' tentou avisos conhecidos
+        self.assertNotIn("close_windows", names(acc))
+        acc.st.modals = []                               # usuario fechou
+        clock.t += 30
+        eng.tick(acc)
+        self.assertNotIn("start_hunt", names(acc))       # ainda dentro do minuto de espera
+        clock.t += 31
+        eng.tick(acc)
+        eng.tick(acc)
+        self.assertIn("start_hunt", names(acc))
+        self.assertEqual(sum("janela aberta pelo usuário" in line for line in logs), 1)
 
 
 if __name__ == "__main__":

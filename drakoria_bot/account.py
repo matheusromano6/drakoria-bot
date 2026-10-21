@@ -42,7 +42,7 @@ READ_JS = r"""() => {
   const d = document.querySelector('.cp-dest'); out.dest = d ? (d.title || '') : '';
   const sm = [...document.querySelectorAll('.td-skill.resource-meter')].find(e => /^\s*Stamina/.test(e.innerText || ''));
   out.stamina = sm ? sm.innerText.replace(/\s+/g, ' ').trim() : '';
-  document.querySelectorAll('.modal, .tibia-window').forEach(w => {
+  document.querySelectorAll('.modal, .tibia-window, .workspace-window').forEach(w => {
     if (!vis(w)) return;
     const head = txt(w.querySelector('.tibia-window-brand, header')).split('\n')[0];
     if (head) out.modals.push(head);
@@ -260,12 +260,12 @@ class Account:
         time.sleep(0.3)
 
     def dismiss_popups(self):
-        """Relatorio offline / avisos: clica so' botoes inofensivos (Coletar e continuar, OK, Continuar...)."""
+        """Relatorio offline / avisos: clica so' botoes inofensivos (Coletar e continuar, OK, Continuar...).
+        NUNCA fecha outras janelas: podem ser do usuario (20/10: o bot fechava a lista de caças que o usuario abria)."""
         if self._js_click(S.OFFLINE_COLLECT, visible=True):
             return "relatório offline coletado"
         if self._click_text(".modal", S.DISMISS_TEXT):
             return "aviso fechado"
-        self.close_windows()            # janela comum que ficou aberta (detalhes, tasks...): so' fecha
         return None
 
     def reload(self):

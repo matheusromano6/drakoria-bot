@@ -34,6 +34,7 @@ class Engine:
         self.mismatch = 0
         self.hunt_known = None          # caça atual quando o rastreador nao identifica (lida no 'Detalhes')
         self.resting = bool(memory.get("stamina_resting")) if memory else False   # treinando pra recuperar stamina
+        self.user_busy_until = 0        # janela do usuario aberta: nada de mexer na tela ate esse horario
         self.prey_spent = {}            # ouro gasto trocando lista da Prey hoje (sem memory.json)
         self.snapshot = {"state": None, "hunt": None, "target": None, "phase": "-", "action": "", "prey": [], "tasks": [], "goal": ""}
 
@@ -195,12 +196,19 @@ class Engine:
             self._relogin(acc)
             return
 
-        # 3) relatorio offline / avisos
+        # 3) relatorio offline / avisos. Qualquer outra janela e' do USUARIO: o bot nao mexe na tela enquanto ela estiver
+        #    aberta e por mais 'user_idle_seconds' depois (so' leitura; o Market ao vivo continua, ele nao usa a tela)
         if st.modals:
             done = acc.dismiss_popups()
             if done:
                 self.log(done)
                 return
+            if now >= self.user_busy_until:
+                self.log("janela aberta pelo usuário: o bot espera pra não atrapalhar")
+            self.user_busy_until = now + self.cfg.get("user_idle_seconds", 60)
+        if now < self.user_busy_until:
+            self.snapshot["goal"] = "aguardando você usar o jogo"
+            return
 
         # 4) loot: protecao de boss sempre ligada; Auto Sell conforme Premium/escolha
         auto = self.auto_sell(st)
