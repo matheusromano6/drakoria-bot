@@ -393,3 +393,31 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   (launch_idledeck vira automatico: so' com IdleDeck).
 - Validado ao vivo: scan acha Opera GX 9223 (Drakoria logado), Chrome 9222 e IdleDeck 9230 em 0,7 s; launch Edge ->
   porta 9231, perfil navegador/edge, aba do jogo aberta, aparece no scan (fechado depois).
+
+## Imbuements - mapa e teste ao vivo (21/10/2026)
+- Janela: menu Personagem -> `button.main-menu-character-shortcut` "Imbuements" -> `.tibia-window-overlay.imb-overlay`.
+  Controles `[data-imb-action]`: member (data-member = id do membro: 'main' ou 'party-...'), item (data-item = id do item,
+  data-slot), tier (0 Basic, 1 Intricate, 2 Powerful), select (data-imbuement), payment (materials | gold-token | silver-token),
+  apply ("Aplicar X", disabled sem material/ouro), auto-renew ("Auto ON/OFF"), remove (pede confirmacao), close.
+- Motor: `window.__drkMarket.game` (mesmo objeto do Market) tem tudo, SEM abrir janela: partyMembers(), member.equipment
+  {slot: itemId}, itemById, isImbuementEligible, imbuementStatus(member,item) -> {capacity, used, free, entries[{id, tier,
+  remainingMs, autoRenew, payment}]}, imbuements.available(member,item,tier) (restriction.ok), imbuements.paymentCosts(def,tier),
+  imbuementQuote, applyImbuement(member,itemId,defId,tier,payment), setImbuementAutoRenew(member,itemId,defId,bool).
+  Inventario: g.char.inventory {nome minusculo: qtd} (compartilhado pela party), depot g.state.bank.items, ouro g.char.gold.
+- Regras: 30h de USO; o tempo so corre em combate (hunt/boss/quest/dungeon...), nao na cidade/house/treino.
+  Taxa manual: Basic 7.500, Intricate 60.000, Powerful 250.000. Tier N usa materials[0..N]; ou 10 gold/silver tokens.
+  Item tem 1-3 slots; mesmo imbuement nao repete no item; conversao elemental so 1 por arma.
+- Renovacao NATIVA do jogo (Auto ON): quando expira em combate renova sozinho por 750.000 + materiais (mochila depois depot;
+  tenta materials, depois gold token, depois silver token). Sem recurso: expira e loga.
+- Aplicar nao faz fetch (estado do jogo sincroniza sozinho). TESTE: MRPally Rift Bow Powerful Void (pedido do usuario):
+  rope belt 192->167, silencer claws 36->11, grimeleech wings 13->8, ouro -250k, entrada void tier 2 108.000.000 ms, Auto OFF.
+- Party 21/10: Kina (DSM vampirism P, magic sword vampirism P + 1 livre, helmet/escudo/botas/bp livres), Pally (rift bow 3 slots:
+  void + 2 livres, helmet, botas, bp), Sorc (helmet, botas, bp - sem arma imbuivel), Druid (underworld rod 2, helmet, botas, bp).
+- Aba Imbuements (implementada 21/10, usuario): metas {member, slot, imbuement, tier, source auto|hunt|market}; menus em
+  cascata lidos do jogo (memory 'imbuing_party'). imbuing.py (puro): status ok/preparar(< prepare_hours)/aplicar,
+  shortages, best_hunt (chance media de drop por criatura da caça, loot de /data/runtime-monsters-v17.json, + metade dos
+  outros materiais). Engine passo 5 (acima de tasks): aplica (tira do depot com moveBankToInventory), compra no Market
+  (auto: ate buy_pct% do justo; market: mais baratas; orçamento proprio daily_budget), protege materiais (setLootFilter
+  coletar + setLootSellFilter nao vender), imb_hunt manda na caça (dificuldade propria). Reaplicar manual (250k) em vez
+  da renovação nativa (750k). end 'loop' = continua caçando o material com menos aplicações em estoque.
+- Validado so leitura: Pally void ok 29h46; Kina capacete void 'aplicar' faltam 14 silencer claws -> Upper Roshamuul 3,4%.

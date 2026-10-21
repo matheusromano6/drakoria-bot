@@ -59,6 +59,18 @@ DEFAULTS = {
         # imbuements observados: id -> {watch, tier 0..2, uses (aplicações), buy, pay_pct (% do justo que aceita pagar)}
         "imbuements": {},
     },
+    # imbuements (aba Imbuements): metas por personagem/equipamento. O bot aplica/reaplica quando acaba e junta os
+    # materiais (Market e/ou caça) quando falta menos de prepare_hours. Prioridade acima de tasks/bestiary.
+    "imbuing": {
+        "enabled": True,
+        "targets": [],                     # [{member, slot, imbuement, tier 0..2, source auto|hunt|market}]
+        "prepare_hours": 6,
+        "end": "default",                  # tudo pronto: "default" (caça padrão/treino) | "loop" (continua juntando)
+        "difficulty": "",                  # vazia = a da aba Regras
+        "buy_pct": 100,                    # 'Automático' compra so' ate X% do preço justo (senao caça)
+        "daily_budget": 3000000,           # ouro por dia em compras de material de imbuement
+        "check_minutes": 2,
+    },
     "user_idle_seconds": 60,              # janela do usuario aberta: o bot espera isso depois que ela fechar
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s

@@ -12,7 +12,7 @@ from tkinter import ttk
 
 import customtkinter as ctk
 
-from . import VERSION, browsers, config, goals, hunts, updater
+from . import VERSION, browsers, config, goals, hunts, imbuing, updater
 from .market import imbuements as imb
 from .market.store import Store as MarketStore
 from .credentials import Credentials
@@ -76,11 +76,12 @@ class App:
         self.tabs = ctk.CTkTabview(root, fg_color=PANEL, segmented_button_selected_color=ACCENT,
                                    segmented_button_selected_hover_color=ACCENT_HOVER, text_color=DARK_TEXT)
         self.tabs.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        for name in ("Painel", "Regras", "Objetivos", "Market", "Login", "Log"):
+        for name in ("Painel", "Regras", "Objetivos", "Imbuements", "Market", "Login", "Log"):
             self.tabs.add(name)
         self._build_panel(self.tabs.tab("Painel"))
         self._build_rules(self.tabs.tab("Regras"))
         self._build_goals(self.tabs.tab("Objetivos"))
+        self._build_imbuing(self.tabs.tab("Imbuements"))
         self._build_market(self.tabs.tab("Market"))
         if hasattr(self.runner, "notify"):
             self.runner.notify = self.notify
@@ -230,6 +231,7 @@ class App:
                     f"Tasks: {' · '.join(f'{n} {h}/{q}' for n, h, q in snap.get('tasks') or []) or '-'}"))
                 self.goal_status.configure(text=f"Objetivo agora: {snap.get('goal') or 'nenhum (caça da aba Regras)'}")
         self._refresh_market()
+        self._imbuing_refresh()
         self._imb_render()
         self._refresh_spent()
         self._refresh_task_market()
@@ -462,6 +464,201 @@ class App:
         self.cfg["goals"]["bestiary"] = [c for c in self.creature_order if self.beast_vars[c].get()]
         self.save()
         self.log(f"bestiary escolhido: {', '.join(self.cfg['goals']['bestiary']) or 'nenhum'}")
+
+    # ------------------------------------------------------------ imbuements (por personagem / equipamento)
+    def _build_imbuing(self, tab):
+        c = self.cfg["imbuing"]
+        try:
+            from .market import imbuements as market_imb
+            self.imbuing_data = market_imb.load()
+        except Exception:
+            self.imbuing_data = {"imbuements": [], "rules": {}}
+        ctk.CTkLabel(tab, text="Escolha o imbuement de cada equipamento. O bot aplica quando faltar, reaplica quando acabar "
+                               "e junta os materiais antes (Market e/ou caça onde mais dropa). Materiais escolhidos nunca são "
+                               "vendidos. Vem antes de tasks e bestiary.", text_color=MUTED, wraplength=900, justify="left"
+                     ).pack(anchor="w", padx=8, pady=(6, 2))
+
+        opts = ctk.CTkFrame(tab, fg_color=PANEL_ALT, corner_radius=6)
+        opts.pack(fill="x", padx=8, pady=4)
+        self.imbuing_on = tk.BooleanVar(value=bool(c["enabled"]))
+        ctk.CTkCheckBox(opts, text="Ligado", variable=self.imbuing_on, fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                        text_color=TEXT, width=70, command=lambda: self._imbuing_set("enabled", self.imbuing_on.get())
+                        ).pack(side="left", padx=8, pady=8)
+        ends = {"default": "Ao terminar: caça padrão", "loop": "Ao terminar: continuar juntando"}
+        self._imbuing_menu(opts, list(ends.values()), ends.get(c["end"], ends["default"]), 210,
+                           lambda v: self._imbuing_set("end", {b: a for a, b in ends.items()}[v]))
+        self._imbuing_menu(opts, [DEFAULT_DIFF] + config.DIFFICULTIES, c["difficulty"] or DEFAULT_DIFF, 100,
+                           lambda v: self._imbuing_set("difficulty", "" if v == DEFAULT_DIFF else v))
+        self.imbuing_nums = {}
+        for key, label, suffix, width in (("prepare_hours", "preparar com", "h", 36), ("buy_pct", "comprar até", "% do justo", 40),
+                                          ("daily_budget", "até", "/dia", 80)):
+            ctk.CTkLabel(opts, text=label, text_color=TEXT).pack(side="left", padx=(8, 2))
+            var = tk.StringVar(value=str(c[key]))
+            e = ctk.CTkEntry(opts, textvariable=var, width=width, fg_color=BG)
+            e.pack(side="left")
+            e.bind("<FocusOut>", lambda ev, k=key, v=var: self._imbuing_num(k, v))
+            e.bind("<Return>", lambda ev, k=key, v=var: self._imbuing_num(k, v))
+            ctk.CTkLabel(opts, text=suffix, text_color=MUTED).pack(side="left", padx=(2, 0))
+
+        add = ctk.CTkFrame(tab, fg_color=PANEL_ALT, corner_radius=6)
+        add.pack(fill="x", padx=8, pady=4)
+        self.imbuing_add = {}
+        for key, width in (("member", 110), ("slot", 170), ("imbuement", 130), ("tier", 90), ("source", 250)):
+            self.imbuing_add[key] = self._imbuing_menu(add, ["-"], "-", width, lambda v, k=key: self._imbuing_pick(k))
+        btn(add, "Adicionar", self._imbuing_add_target, primary=True, width=90).pack(side="left", padx=6, pady=8)
+        self.imbuing_hint = ctk.CTkLabel(tab, text="", text_color=MUTED, anchor="w")
+        self.imbuing_hint.pack(fill="x", padx=10)
+        self.imbuing_list = ctk.CTkScrollableFrame(tab, fg_color=BG)
+        self.imbuing_list.pack(fill="both", expand=True, padx=8, pady=4)
+        self.imbuing_rows = {}
+        self._imbuing_party = None
+        self._imbuing_view = None
+        self._imbuing_load_party()
+        self._imbuing_draw()
+
+    def _imbuing_menu(self, parent, values, current, width, command):
+        m = ctk.CTkOptionMenu(parent, values=values, width=width, command=command, fg_color=BG, button_color=BORDER,
+                              button_hover_color=ACCENT_HOVER, dropdown_fg_color=PANEL_ALT, text_color=TEXT,
+                              dynamic_resizing=False)
+        m.set(current)
+        m.pack(side="left", padx=(6, 0), pady=8)
+        return m
+
+    def _imbuing_set(self, key, value):
+        self.cfg["imbuing"][key] = value
+        self.save()
+        self.log(f"imbuements: {key} = {value}")
+
+    def _imbuing_num(self, key, var):
+        try:
+            value = max(0, int(float(var.get().replace(".", "").replace(",", "."))))
+        except ValueError:
+            var.set(str(self.cfg["imbuing"][key]))
+            return
+        if value != self.cfg["imbuing"][key]:
+            self._imbuing_set(key, value)
+
+    def _imbuing_load_party(self):
+        """Set da party lido pelo bot (memory 'imbuing_party'); sem leitura ainda -> menus vazios com aviso."""
+        engine = self.runner.engine if self.runner.running else None
+        mem = engine.memory if engine and engine.memory else Memory(MEMORY_PATH)
+        party = mem.get("imbuing_party") or []
+        if party == self._imbuing_party:
+            return
+        self._imbuing_party = party
+        names = [m["name"] for m in party]
+        menu = self.imbuing_add["member"]
+        menu.configure(values=names or ["-"])
+        if menu.get() not in names:
+            menu.set(names[0] if names else "-")
+        self.imbuing_hint.configure(text="" if party else "Inicie o bot: ele lê os equipamentos da party e os menus se preenchem.")
+        self._imbuing_pick("member")
+
+    def _imbuing_slots(self, member):
+        m = next((m for m in self._imbuing_party or [] if m["name"] == member), None)
+        return m["slots"] if m else []
+
+    def _imbuing_pick(self, changed):
+        """Menus em cascata: personagem -> equipamento -> imbuement compativel -> nivel / fonte."""
+        a = self.imbuing_add
+        slots = self._imbuing_slots(a["member"].get())
+        if changed == "member":
+            labels = [f"{imbuing.SLOT_LABELS.get(s['slot'], s['slot'])} · {s['item']}" for s in slots]
+            a["slot"].configure(values=labels or ["-"])
+            a["slot"].set(labels[0] if labels else "-")
+        if changed in ("member", "slot"):
+            slot = self._imbuing_slot_pick(slots)
+            defs = imbuing.compatible(self.imbuing_data, slot["kind"]) if slot else []
+            names = [d["name"] for d in defs]
+            a["imbuement"].configure(values=names or ["-"])
+            if a["imbuement"].get() not in names:
+                a["imbuement"].set(names[0] if names else "-")
+            a["tier"].configure(values=imbuing.TIER_NAMES)
+            if a["tier"].get() not in imbuing.TIER_NAMES:
+                a["tier"].set("Powerful")
+            a["source"].configure(values=list(imbuing.SOURCES.values()))
+            if a["source"].get() not in imbuing.SOURCES.values():
+                a["source"].set(imbuing.SOURCES["auto"])
+
+    def _imbuing_slot_pick(self, slots):
+        label = self.imbuing_add["slot"].get()
+        return next((s for s in slots if label == f"{imbuing.SLOT_LABELS.get(s['slot'], s['slot'])} · {s['item']}"), None)
+
+    def _imbuing_add_target(self):
+        a = self.imbuing_add
+        slot = self._imbuing_slot_pick(self._imbuing_slots(a["member"].get()))
+        d = next((d for d in self.imbuing_data["imbuements"] if d["name"] == a["imbuement"].get()), None)
+        if not slot or not d:
+            self.imbuing_hint.configure(text="Escolha personagem, equipamento e imbuement.", text_color=DANGER)
+            return
+        target = {"member": a["member"].get(), "slot": slot["slot"], "imbuement": d["id"],
+                  "tier": imbuing.TIER_NAMES.index(a["tier"].get()),
+                  "source": {v: k for k, v in imbuing.SOURCES.items()}[a["source"].get()]}
+        targets = [t for t in self.cfg["imbuing"]["targets"] if imbuing.target_key(t) != imbuing.target_key(target)]
+        same_slot = [t for t in targets if t["member"] == target["member"] and t["slot"] == target["slot"]]
+        if len(same_slot) >= slot["cap"]:
+            self.imbuing_hint.configure(text=f"{slot['item']} tem {slot['cap']} slot(s): remova uma meta dele antes.",
+                                        text_color=DANGER)
+            return
+        targets.append(target)
+        self.cfg["imbuing"]["targets"] = targets
+        self.save()
+        self.imbuing_hint.configure(text="", text_color=MUTED)
+        self.log(f"imbuements: meta {self._imbuing_label(target)}")
+        self._imbuing_draw()
+
+    def _imbuing_remove(self, key):
+        self.cfg["imbuing"]["targets"] = [t for t in self.cfg["imbuing"]["targets"] if imbuing.target_key(t) != key]
+        self.save()
+        self.log(f"imbuements: meta removida ({key.replace('|', ' · ')})")
+        self._imbuing_draw()
+
+    def _imbuing_label(self, t):
+        d = imbuing.definition(self.imbuing_data, t["imbuement"])
+        source = {"auto": "automático", "hunt": "caçar", "market": "comprar"}.get(t.get("source"), "automático")
+        return (f"{t['member']} · {imbuing.SLOT_LABELS.get(t['slot'], t['slot'])} · "
+                f"{imbuing.TIER_NAMES[t['tier']]} {d['name'] if d else t['imbuement']} · {source}")
+
+    def _imbuing_draw(self):
+        for child in self.imbuing_list.winfo_children():
+            child.destroy()
+        self.imbuing_rows = {}
+        self._imbuing_view = None
+        targets = self.cfg["imbuing"]["targets"]
+        if not targets:
+            ctk.CTkLabel(self.imbuing_list, text="Nenhuma meta. Escolha acima e clique em Adicionar.", text_color=MUTED
+                         ).pack(anchor="w", padx=6, pady=6)
+            return
+        for t in targets:
+            key = imbuing.target_key(t)
+            row = ctk.CTkFrame(self.imbuing_list, fg_color=PANEL_ALT, corner_radius=6)
+            row.pack(fill="x", pady=2)
+            ctk.CTkLabel(row, text=self._imbuing_label(t), text_color=TEXT, anchor="w",
+                         font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=8, pady=(6, 0))
+            info = ctk.CTkLabel(row, text="aguardando a leitura do jogo", text_color=MUTED, anchor="w", justify="left")
+            info.pack(anchor="w", padx=8, pady=(0, 6))
+            btn(row, "Remover", lambda k=key: self._imbuing_remove(k), width=70).place(relx=1.0, x=-8, y=6, anchor="ne")
+            self.imbuing_rows[key] = info
+
+    def _imbuing_refresh(self):
+        self._imbuing_load_party()
+        snap = self.runner.snapshot if self.runner.running else None
+        rows = (snap or {}).get("imbuing") or []
+        view = repr(rows)
+        if view == self._imbuing_view:
+            return
+        self._imbuing_view = view
+        for r in rows:
+            info = self.imbuing_rows.get(r["key"])
+            if not info:
+                continue
+            state = r["state"]
+            if r["remaining"] is not None:
+                h = r["remaining"]
+                state = f"{state} · restam {int(h)}h{int(h % 1 * 60):02d} de uso"
+            mats = "   ".join(f"{name} {have}/{need}{' ✓' if have >= need else ''}" for name, have, need in r["materials"])
+            color = OK if r["state"] == "ok" else (ACCENT if r["state"] in ("preparar", "aplicar") else DANGER)
+            info.configure(text=f"{r['item'] or '-'}: {state}\n{mats}", text_color=color)
 
     # ---------------------------------------------------------------- market
     def _build_market(self, tab):

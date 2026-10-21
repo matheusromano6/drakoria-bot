@@ -105,6 +105,63 @@ BESTIARY_JS = r"""async () => {
 }"""
 
 
+# Imbuements (mapeado 21/10/2026): o motor do jogo (window.__drkMarket.game, capturado pelo hook do Market) le e aplica
+# sem abrir janela - o mesmo game.applyImbuement que o botao 'Aplicar' da Imbuement Shrine chama.
+IMB_STATE_JS = r"""(names) => {
+  const g = window.__drkMarket && window.__drkMarket.game;
+  if (!g || !g.char) return null;
+  const bank = (g.state.bank && g.state.bank.items) || {}, inv = g.char.inventory || {};
+  const count = (o, n) => { const k = Object.keys(o).find(k => k.toLowerCase() === n); return k ? Math.floor(+o[k] || 0) : 0; };
+  return {
+    gold: Math.floor(+g.char.gold || 0),
+    counts: Object.fromEntries(names.map(n => [n, [count(inv, n), count(bank, n)]])),
+    members: g.partyMembers().map(m => ({id: String(m.id), name: m.name, level: m.level,
+      slots: Object.entries(m.equipment || {}).map(([slot, id]) => {
+        const it = g.itemById(id);
+        if (!it || !g.isImbuementEligible(it)) return null;
+        const st = g.imbuementStatus(m, it);
+        return {slot, item: it.name.replace(/(^|\s)\S/g, c => c.toUpperCase()), itemId: Number(it.id), kind: st.kind,
+                cap: st.capacity, entries: st.entries.map(e => ({id: e.id, tier: e.tier, h: e.remainingMs / 3600000, auto: !!e.autoRenew}))};
+      }).filter(Boolean)}))
+  };
+}"""
+
+IMB_APPLY_JS = r"""([memberId, slot, itemId, imbId, tier, moves]) => {
+  const g = window.__drkMarket && window.__drkMarket.game;
+  if (!g) return {ok: false, msg: 'jogo indisponivel'};
+  const m = g.partyMembers().find(x => String(x.id) === memberId);
+  if (!m) return {ok: false, msg: 'personagem nao encontrado'};
+  if (Number(m.equipment && m.equipment[slot]) !== Number(itemId)) return {ok: false, msg: 'o item do slot mudou'};
+  for (const [name, qty] of moves) {
+    const r = g.moveBankToInventory(name, qty);
+    if (!r || r.ok === false) return {ok: false, msg: 'tirar ' + name + ' do depot: ' + ((r && r.msg) || 'falhou')};
+  }
+  const r = g.applyImbuement(m, itemId, imbId, tier, 'materials');
+  return {ok: !!(r && r.ok), msg: (r && r.msg) || ''};
+}"""
+
+IMB_PROTECT_JS = r"""(names) => {
+  const g = window.__drkMarket && window.__drkMarket.game;
+  if (!g) return false;
+  for (const n of names) { g.setLootFilter(n, true); g.setLootSellFilter(n, false); }
+  return true;
+}"""
+
+# Loot de todas as criaturas do jogo: {material: {criatura_minuscula: chance 0..1}} so' dos materiais pedidos
+DROPS_JS = r"""async (names) => {
+  const app = [...document.scripts].map(s => s.src).find(s => /\/js\/app\.js/.test(s)) || '';
+  const build = (app.match(/\?build=[^&]+/) || [''])[0];
+  const data = await (await fetch('/data/runtime-monsters-v17.json' + build)).json();
+  const list = Array.isArray(data) ? data : (data.monsters || Object.values(data));
+  const out = Object.fromEntries(names.map(n => [n, {}]));
+  for (const mon of list) for (const l of (mon.loot || [])) {
+    const n = String(l.name || '').toLowerCase();
+    if (out[n]) out[n][String(mon.name).toLowerCase()] = Math.max(out[n][String(mon.name).toLowerCase()] || 0, (+l.chance || 0) / 100000);
+  }
+  return out;
+}"""
+
+
 HUNT_CATALOG_JS = r"""async () => {
   const app = [...document.scripts].map(s => s.src).find(s => /\/js\/app\.js/.test(s)) || '';
   const build = (app.match(/\?build=[^&]+/) || [''])[0];
@@ -343,6 +400,37 @@ class Account:
         if not self._wait(lambda: S.SCENE_HUNTING in (self.page.evaluate(
                 "s => (document.querySelector(s) || {}).className || ''", S.SCENE) or ""), 12):
             raise RuntimeError("nao entrou na caçada")
+
+    def _game_hook(self):
+        from .market.api import HOOK_JS
+        status = self.page.evaluate(HOOK_JS)
+        if status != "ok":
+            raise RuntimeError(status)
+
+    def read_imbuements(self, names):
+        """Set, imbuements e materiais (mochila, depot) da party, sem janela. names = materiais em minusculas."""
+        self._game_hook()
+        data = self.page.evaluate(IMB_STATE_JS, list(names))
+        if not data:
+            raise RuntimeError("motor do jogo indisponivel")
+        data["counts"] = {k: tuple(v) for k, v in data["counts"].items()}
+        return data
+
+    def apply_imbuement(self, member_id, slot, item_id, imb_id, tier, moves):
+        """Tira do depot o que faltar na mochila (moves [(nome, qtd)]) e aplica com materiais. Erro -> RuntimeError."""
+        self._game_hook()
+        res = self.page.evaluate(IMB_APPLY_JS, [member_id, slot, item_id, imb_id, int(tier), [list(m) for m in moves]])
+        if not res.get("ok"):
+            raise RuntimeError(res.get("msg") or "nao aplicou")
+        return res.get("msg")
+
+    def protect_materials(self, names):
+        """Coletar e NUNCA vender esses materiais (filtros da Loot Pouch)."""
+        self._game_hook()
+        return self.page.evaluate(IMB_PROTECT_JS, list(names))
+
+    def read_drops(self, names):
+        return self.page.evaluate(DROPS_JS, list(names))
 
     def read_hunt_catalog(self):
         """Catalogo de caças do PROPRIO jogo, sem abrir janela: v1-content + premium-hunts-test passados pela funcao do

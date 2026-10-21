@@ -1,5 +1,6 @@
 """Motor: a cada 'poll_seconds' le a pagina (1 evaluate) e faz NO MAXIMO uma acao.
-Prioridade: erro/queda -> login -> avisos -> loot (protecao de boss / venda) -> tasks/bestiary -> prey -> destino.
+Prioridade: erro/queda -> login -> avisos -> loot (protecao de boss / venda) -> imbuements -> tasks/bestiary -> prey
+-> destino.
 
 Destino (usuario 20/10/2026): stamina abaixo de 'train_below_hours' (14h: a XP cai pela metade) -> treinar ate
 'resume_hours'; senao objetivo (task ativa / bestiary) -> caça padrao da aba Regras -> treinar. Nunca parado."""
@@ -8,6 +9,7 @@ import time
 import datetime
 
 from . import goals as G
+from . import imbuing as I
 from . import hunts as H
 from . import prey as P
 
@@ -37,6 +39,16 @@ class Engine:
         self.user_busy_until = 0        # janela do usuario aberta: nada de mexer na tela ate esse horario
         self.hunts_checked = False      # catalogo de caças relido do jogo 1x por inicio do bot
         self.prey_spent = {}            # ouro gasto trocando lista da Prey hoje (sem memory.json)
+        try:
+            from .market import imbuements as MI
+            self.imb_data = MI.load()
+        except Exception:
+            self.imb_data = {"imbuements": [], "rules": {}}
+        self.imb_hunt = None            # (caça, motivo) pra juntar material de imbuement
+        self.imb_drops = {}             # material -> {criatura: chance}
+        self.imb_protected = set()      # materiais ja marcados 'coletar / nao vender' nesta execução
+        self.imb_rows = []
+        self.imb_seen = False           # set da party lido 1x (a aba Imbuements monta os menus com ele)
         self.snapshot = {"state": None, "hunt": None, "target": None, "phase": "-", "action": "", "prey": [], "tasks": [], "goal": ""}
 
     # ------------------------------------------------------------------ util
@@ -92,7 +104,9 @@ class Engine:
                            self.hunts, st.level, 1000000)
 
     def target_difficulty(self, st):
-        """Dificuldade do objetivo atual (escolhida na aba Objetivos) ou a da aba Regras."""
+        """Dificuldade do objetivo atual (escolhida na aba Objetivos / Imbuements) ou a da aba Regras."""
+        if self.imb_hunt:
+            return (self.cfg.get("imbuing") or {}).get("difficulty") or self.cfg["difficulty"]
         _, _, key = self.goal_target(st)
         chosen = ((self.cfg.get("goals") or {}).get("difficulty") or {}).get(key or "")
         return chosen or self.cfg["difficulty"]
@@ -118,6 +132,9 @@ class Engine:
         if self.stamina_rest(st):
             self.snapshot["goal"] = "recuperando stamina (treino)"
             return None
+        if self.imb_hunt:
+            self.snapshot["goal"] = self.imb_hunt[1]
+            return self.imb_hunt[0]
         hunt, why, _ = self.goal_target(st)
         self.snapshot["goal"] = why
         if hunt:
@@ -228,7 +245,16 @@ class Engine:
                 self.log(f"Loot Pouch com {st.loot_items} itens: vendido tudo (ouro {st.gold})")
             return
 
-        # 5) tasks de produto: entrega as prontas e aceita as proximas da fila
+        # 5) imbuements (acima de tasks/bestiary): aplica o que acabou, compra/escolhe caça pros materiais
+        imb = self.cfg.get("imbuing") or {}
+        if imb.get("enabled", True) and (imb.get("targets") or not self.imb_seen) and st.phase in ("hunting", "city", "house", "house_idle"):
+            every = imb.get("check_minutes", 2) * 60
+            if now - self.last_ok.get("imbuements", -every) >= every and self._ready("imbuements"):
+                self._imbuing(acc, st)
+        elif self.imb_hunt:
+            self.imb_hunt = None
+
+        # 6) tasks de produto: entrega as prontas e aceita as proximas da fila
         goals = self.cfg.get("goals") or {}
         if st.phase == "hunting":
             self._note_tracker(st)
@@ -245,7 +271,7 @@ class Engine:
                 self._tasks(acc, st)
                 return
 
-        # 6) prey (so' caçando: o tempo da prey so' corre na caça)
+        # 7) prey (so' caçando: o tempo da prey so' corre na caça)
         prey = self.cfg.get("prey") or {}
         if prey.get("enabled") and st.phase == "hunting" and current and self._settled(st, current):
             every = prey.get("check_minutes", 10) * 60
@@ -253,7 +279,7 @@ class Engine:
                 self._prey(acc, st, current)
                 return
 
-        # 7) destino: sempre caça ou treino (usuario 20/10: sem modo 'so vigiar')
+        # 8) destino: sempre caça ou treino (usuario 20/10: sem modo 'so vigiar')
         target = self.target_hunt(acc, st)
         self.snapshot["target"] = target or "treino"
         if not target:
@@ -317,6 +343,8 @@ class Engine:
         """Ja esta na caça que o bot quer? (nao escolhe Prey pra uma caça que vai trocar em seguida)"""
         if self.resting:
             return False
+        if self.imb_hunt:
+            return self.imb_hunt[0].casefold() == current.casefold()
         hunt, _, _ = self.goal_target(st)
         wanted = hunt or (self.cfg.get("hunt") or "").strip()
         return bool(wanted) and wanted.casefold() == current.casefold()
@@ -406,6 +434,145 @@ class Engine:
                 acc.close_windows()
             except Exception:
                 pass
+
+    def _imbuing(self, acc, st):
+        """Le o set da party, aplica as metas prontas, compra materiais e escolhe a caça dos que faltam."""
+        cfg = self.cfg["imbuing"]
+        prep = cfg.get("prepare_hours", 6)
+        targets = [t for t in cfg["targets"] if t.get("enabled", True)]
+        names = I.all_material_names(self.imb_data, targets)
+        try:
+            game = acc.read_imbuements(names)
+            self._imb_state(game)
+            self.imb_seen = True
+            new = [n for n in names if n not in self.imb_protected]
+            if new and acc.protect_materials(new):
+                self.imb_protected.update(new)
+            statuses = [I.status(t, game, self.imb_data, prep) for t in targets]
+            reserve = (self.cfg.get("market") or {}).get("reserve_gold", 0)
+            for s in statuses:
+                if I.ready_to_apply(s, self.imb_data, game["counts"], game["gold"], reserve):
+                    self._imb_apply(acc, s, game)
+                    game = acc.read_imbuements(names)
+            statuses = [I.status(t, game, self.imb_data, prep) for t in targets]
+            short = I.shortages(statuses, self.imb_data, game["counts"])
+            hunt_for = {}
+            for name, (missing, source) in short.items():
+                got = self._imb_buy(acc, name, missing, source) if source in ("market", "auto") else 0
+                if missing - got > 0 and source in ("hunt", "auto"):
+                    hunt_for[name] = missing - got
+            self.imb_hunt = self._imb_choose_hunt(acc, st, hunt_for, statuses, game)
+            self.imb_rows = self._imb_view(statuses, game)
+            self.snapshot["imbuing"] = self.imb_rows
+            self.last_ok["imbuements"] = self.clock()
+        except Exception as error:
+            self.imb_hunt = None
+            self._fail("imbuements", error)
+
+    def _imb_state(self, game):
+        """Guarda o set lido (a aba Imbuements monta os menus com ele)."""
+        if self.memory:
+            self.memory.set("imbuing_party", [{"name": m["name"], "slots": [
+                {"slot": s["slot"], "item": s["item"], "kind": s["kind"], "cap": s["cap"]} for s in m["slots"]]}
+                for m in game["members"]])
+
+    def _imb_apply(self, acc, s, game):
+        t = s["target"]
+        moves = []
+        for name, _, qty in I.materials(self.imb_data, t["imbuement"], t["tier"]):
+            inv, _ = game["counts"].get(name, (0, 0))
+            if inv < qty:
+                moves.append((name, qty - inv))
+        d = I.definition(self.imb_data, t["imbuement"])
+        label = f"{I.TIER_NAMES[t['tier']]} {d['name'] if d else t['imbuement']} em {s['item']} ({t['member']})"
+        if self._do("aplicar imbuement", acc.apply_imbuement, s["member_id"], t["slot"], s["item_id"], t["imbuement"],
+                    t["tier"], moves):
+            self.log(f"imbuement aplicado: {label}" + (" (materiais tirados do depot)" if moves else ""))
+
+    def _imb_spent(self):
+        day = datetime.date.fromtimestamp(self.clock()).isoformat()
+        data = (self.memory.get("imbuing_spent") if self.memory else None) or getattr(self, "_imb_spent_mem", {})
+        return day, (data.get("gold", 0) if data.get("day") == day else 0)
+
+    def _imb_buy(self, acc, name, missing, source):
+        """Compra 'missing' pelas ofertas mais baratas. auto: so' ate buy_pct% do justo. Devolve quantos comprou."""
+        if not self._ready("comprar " + name):
+            return 0
+        self.cooldown["comprar " + name] = self.clock() + 600     # 1 tentativa por material a cada 10 min
+        from .market import analysis as A
+        from .market.api import MarketApi, MarketError
+        cfg, mcfg = self.cfg["imbuing"], self.cfg.get("market") or {}
+        api = MarketApi(acc.page)
+        try:
+            item = api.search(name)
+            if not item:
+                return 0
+            ev = A.evaluate(api.detail(item["id"]), mcfg)
+            if not ev.offers:
+                return 0
+            if source == "auto":
+                if not ev.fair:
+                    return 0
+                max_price = int(ev.fair * cfg.get("buy_pct", 100) / 100)
+            else:
+                max_price = 10 ** 12
+            day, spent = self._imb_spent()
+            wallet = A._num((api.overview().get("wallet") or {}).get("goldSpendable")) or 0
+            plan = A.buy_plan(ev, max_price, missing, wallet, mcfg.get("reserve_gold", 0),
+                              max(0, cfg.get("daily_budget", 0) - spent))
+            got = 0
+            for offer, qty in plan:
+                price = A._num(offer["unitPriceGold"])
+                res = api.buy(offer, qty)
+                got += qty
+                spent += qty * price
+                delivery = (res.get("delivery") or {}).get("id")
+                store = getattr(self.market, "store", None)
+                if store:
+                    store.add_purchase(ev.item_id, ev.name, qty, price, offer["id"], delivery, auto=True,
+                                       reason="imbuement")
+                self.log(f"imbuement: comprou {qty}x {ev.name} a {int(price):,} no Market".replace(",", "."))
+                if delivery:
+                    api.claim(delivery)
+            self._imb_spent_mem = {"day": day, "gold": spent}
+            if self.memory and got:
+                self.memory.set("imbuing_spent", self._imb_spent_mem)
+            return got
+        except MarketError as error:
+            self.log(f"imbuement: compra de {name} falhou: {error}")
+            return 0
+
+    def _imb_choose_hunt(self, acc, st, hunt_for, statuses, game):
+        cfg = self.cfg["imbuing"]
+        if not hunt_for and cfg.get("end") == "loop":
+            loop = I.loop_material(statuses, self.imb_data, game["counts"])
+            if loop:
+                hunt_for = {loop: 0}
+        if not hunt_for:
+            return None
+        missing = [n for n in hunt_for if n not in self.imb_drops]
+        if missing:
+            self.imb_drops.update(acc.read_drops(missing))
+        level = min((m["level"] for m in game["members"]), default=0) or st.level or 10 ** 6
+        for name in hunt_for:
+            found = I.best_hunt(name, self.imb_drops, self.hunts, level, list(hunt_for))
+            if found:
+                hunt, chance = found
+                left = hunt_for[name]
+                why = f"imbuement: {name} (faltam {left})" if left else f"imbuement: juntando {name} (loop)"
+                return hunt, f"{why} · {chance * 100:.1f}% por abate"
+            if self._ready("sem caça " + name):
+                self.cooldown["sem caça " + name] = self.clock() + 3600
+                self.log(f"imbuement: nenhuma caça alcançável dropa {name}")
+        return None
+
+    def _imb_view(self, statuses, game):
+        rows = []
+        for s in statuses:
+            t = s["target"]
+            mats = [(disp, I.have(game["counts"], n), q) for n, disp, q in I.materials(self.imb_data, t["imbuement"], t["tier"])]
+            rows.append({"key": s["key"], "state": s["state"], "remaining": s["remaining"], "item": s["item"], "materials": mats})
+        return rows
 
     def _merge_bestiary(self, found):
         progress = dict(self.bestiary_progress())

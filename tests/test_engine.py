@@ -150,6 +150,7 @@ class Clock:
 def make(acc, creds=None, **cfg_over):
     cfg_over.setdefault("prey", {"enabled": False})
     cfg_over.setdefault("goals", {"enabled": False})
+    cfg_over.setdefault("imbuing", {"enabled": False})
     cfg = config._merge(config.DEFAULTS, cfg_over)
     clock = Clock()
     logs = []
