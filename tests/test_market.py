@@ -187,3 +187,23 @@ class WatcherTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StoreReportTest(unittest.TestCase):
+    def test_period_query_reason_and_old_db_migration(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "m.db")
+            db = sqlite3.connect(path)            # banco da v1.4-v1.8 (sem a coluna reason)
+            db.execute("CREATE TABLE purchase (ts REAL, item_id TEXT, name TEXT, quantity INTEGER, price REAL, total REAL, "
+                       "offer_id TEXT, delivery_id TEXT, auto INTEGER)")
+            db.execute("INSERT INTO purchase VALUES (100, '1', 'velho', 2, 10, 20, 'o', 'd', 1)")
+            db.commit()
+            db.close()
+            now = [200.0]
+            store = Store(path, clock=lambda: now[0])
+            store.add_purchase("2", "rope belt", 3, 1000, "o2", "d2", auto=True, reason="oportunidade Void")
+            rows = store.purchases_between(150, None)
+            self.assertEqual(rows, [(200.0, "rope belt", 3, 1000.0, 3000.0, "oportunidade Void")])
+            self.assertEqual(len(store.purchases_between()), 2)
+            self.assertEqual(store.purchases_between(0, 150)[0][5], "")          # compra antiga: sem motivo

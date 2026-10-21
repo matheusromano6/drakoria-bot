@@ -6,6 +6,7 @@ import os
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk
 
@@ -13,6 +14,7 @@ import customtkinter as ctk
 
 from . import VERSION, config, goals, hunts, updater
 from .market import imbuements as imb
+from .market.store import Store as MarketStore
 from .credentials import Credentials
 from .memory import Memory
 from .paths import app_dir, resource_dir
@@ -27,7 +29,6 @@ DARK_TEXT = "#1a1200"
 PHASES = {"hunting": "Caçando", "house": "Treinando (house)", "house_idle": "Na house", "city": "Na cidade", "login": "Deslogado",
           "error": "Erro / reconectando", "unknown": "?", "-": "-"}
 NO_HUNT = "Nenhuma (só treinar)"
-MODES = {"hunt": "Caçar sempre", "watch": "Só vigiar (relogin, avisos, loot)"}
 DEFAULT_DIFF = "Padrão"
 PREY_MODES = {"budget": "Até X de ouro por dia", "until_found": "Até achar (sem limite diário)"}
 AUTO_SELL = {"auto": "Automático (liga se for Premium)", "on": "Sempre ligado", "off": "Desligado (vender pelo bot)"}
@@ -230,6 +231,7 @@ class App:
                 self.goal_status.configure(text=f"Objetivo agora: {snap.get('goal') or 'nenhum (caça da aba Regras)'}")
         self._refresh_market()
         self._imb_render()
+        self._refresh_spent()
         self._refresh_task_market()
         self.root.after(1000, self._poll_state)
 
@@ -250,9 +252,6 @@ class App:
             m.grid(row=r, column=1, sticky="ew", pady=6)
             return m
 
-        label(0, "Modo")
-        menu(0, list(MODES.values()), MODES.get(self.cfg["mode"], MODES["hunt"]),
-             lambda v: self._set("mode", {b: a for a, b in MODES.items()}[v]))
         label(1, "Caça")
         menu(1, [NO_HUNT] + self.hunt_names, self.cfg["hunt"] or NO_HUNT,
              lambda v: self._set("hunt", "" if v == NO_HUNT else v))
@@ -486,20 +485,124 @@ class App:
         self.reserve_var = tk.StringVar(value=str(m["reserve_gold"]))
         for label, var, key in (("Orçamento/dia", self.budget_var, "daily_budget"), ("Reserva de ouro", self.reserve_var, "reserve_gold")):
             ctk.CTkLabel(bottom, text=label, text_color=TEXT).pack(side="left", padx=(14, 4))
-            entry = ctk.CTkEntry(bottom, textvariable=var, width=100, fg_color=BG)
+            entry = ctk.CTkEntry(bottom, textvariable=var, width=90, fg_color=BG)
             entry.pack(side="left")
             entry.bind("<FocusOut>", lambda e, k=key, v=var: self._save_market_number(k, v))
             entry.bind("<Return>", lambda e, k=key, v=var: self._save_market_number(k, v))
+        ctk.CTkLabel(bottom, text="Gasto hoje", text_color=TEXT).pack(side="left", padx=(14, 4))
+        self.spent_var = tk.StringVar(value="-")
+        ctk.CTkEntry(bottom, textvariable=self.spent_var, width=300, fg_color=BORDER, text_color=TEXT,
+                     state="readonly").pack(side="left")
         self.market_status = ctk.CTkLabel(bottom, text="Ligue o bot para coletar os preços.", text_color=MUTED, anchor="e")
         self.market_status.pack(side="right", padx=8)
+        try:
+            self.market_store = MarketStore(os.path.join(ROOT, "market.db"))
+        except Exception:
+            self.market_store = None
+        self._spent_at = 0
 
         inner = ctk.CTkTabview(tab, fg_color=PANEL, segmented_button_selected_color=ACCENT,
                                segmented_button_selected_hover_color=ACCENT_HOVER, text_color=DARK_TEXT)
         inner.pack(fill="both", expand=True, padx=2)
         inner.add("Imbuements")
         inner.add("Itens")
+        inner.add("Relatório")
         self._build_market_imb(inner.tab("Imbuements"))
         self._build_market_items(inner.tab("Itens"))
+        self._build_market_report(inner.tab("Relatório"))
+
+    # ------------------------------------------------------ market: relatorio
+    REPORT_PERIODS = ["Hoje", "Ontem", "7 dias", "30 dias", "Tudo"]
+
+    def _build_market_report(self, tab):
+        top = ctk.CTkFrame(tab, fg_color="transparent")
+        top.pack(fill="x", padx=4, pady=(4, 2))
+        self.report_period = ctk.CTkSegmentedButton(top, values=self.REPORT_PERIODS, selected_color=ACCENT,
+                                                    selected_hover_color=ACCENT_HOVER, text_color=TEXT,
+                                                    command=lambda v: self._report_refresh())
+        self.report_period.set("Hoje")
+        self.report_period.pack(side="left")
+        ctk.CTkLabel(top, text="ou de", text_color=TEXT).pack(side="left", padx=(16, 4))
+        self.report_from = tk.StringVar()
+        self.report_to = tk.StringVar()
+        ctk.CTkEntry(top, textvariable=self.report_from, width=96, placeholder_text="dd/mm/aaaa", fg_color=BG).pack(side="left")
+        ctk.CTkLabel(top, text="até", text_color=TEXT).pack(side="left", padx=4)
+        ctk.CTkEntry(top, textvariable=self.report_to, width=96, placeholder_text="dd/mm/aaaa", fg_color=BG).pack(side="left")
+        btn(top, "Filtrar", lambda: self._report_refresh(custom=True), primary=True, width=70).pack(side="left", padx=6)
+        btn(top, "Atualizar", self._report_refresh, width=80).pack(side="right")
+
+        cols = ("quando", "item", "qtd", "preco", "total", "motivo")
+        heads = ("Data / hora", "Item", "Qtd", "Preço", "Total", "Motivo")
+        widths = (130, 190, 50, 90, 100, 230)
+        self.report_tree = ttk.Treeview(tab, columns=cols, show="headings", height=13, style="Market.Treeview")
+        for col, head, width in zip(cols, heads, widths):
+            self.report_tree.heading(col, text=head)
+            self.report_tree.column(col, width=width, anchor="e" if col in ("qtd", "preco", "total") else "w",
+                                    stretch=col in ("item", "motivo"))
+        self.report_tree.pack(fill="both", expand=True, padx=4, pady=4)
+        self.report_summary = ctk.CTkLabel(tab, text="", text_color=TEXT, anchor="w", justify="left", font=("Segoe UI", 12))
+        self.report_summary.pack(fill="x", padx=8, pady=(0, 4))
+        self._report_refresh()
+
+    def _report_range(self, custom):
+        today = datetime.datetime.combine(datetime.date.today(), datetime.time())
+        if custom:
+            def parse(text, end=False):
+                text = (text or "").strip()
+                if not text:
+                    return None
+                d = datetime.datetime.strptime(text, "%d/%m/%Y")
+                return (d + datetime.timedelta(days=1) if end else d).timestamp()
+            try:
+                return parse(self.report_from.get()), parse(self.report_to.get(), end=True), "período escolhido"
+            except ValueError:
+                return None
+        period = self.report_period.get()
+        if period == "Hoje":
+            return today.timestamp(), None, "hoje"
+        if period == "Ontem":
+            return (today - datetime.timedelta(days=1)).timestamp(), today.timestamp(), "ontem"
+        if period in ("7 dias", "30 dias"):
+            days = int(period.split()[0])
+            return (today - datetime.timedelta(days=days - 1)).timestamp(), None, f"últimos {days} dias"
+        return None, None, "todo o histórico"
+
+    def _report_refresh(self, custom=False):
+        if not self.market_store:
+            return
+        rng = self._report_range(custom)
+        if rng is None:
+            self.report_summary.configure(text="Data inválida: use dd/mm/aaaa (ex.: 20/10/2026).", text_color=DANGER)
+            return
+        start, end, label = rng
+        rows = self.market_store.purchases_between(start, end)
+        self.report_tree.delete(*self.report_tree.get_children())
+        by_item = {}
+        for ts, name, qty, price, total, reason in rows:
+            when = datetime.datetime.fromtimestamp(ts).strftime("%d/%m %H:%M:%S")
+            self.report_tree.insert("", "end", values=(when, name, qty, self._gold(price), self._gold(total), reason or "-"))
+            item = by_item.setdefault(name, [0, 0])
+            item[0] += qty
+            item[1] += total
+        spent = sum(r[4] for r in rows)
+        units = sum(r[2] for r in rows)
+        top = sorted(by_item.items(), key=lambda kv: -kv[1][1])[:5]
+        detail = " · ".join(f"{n}: {q} un. ({self._gold(t)})" for n, (q, t) in top)
+        self.report_summary.configure(
+            text=(f"{label.capitalize()}: {len(rows)} compras · {units} itens · {self._gold(spent)} de ouro"
+                  + (f"\nMais gasto: {detail}" if detail else "")), text_color=TEXT)
+
+    def _refresh_spent(self):
+        """Campo 'Gasto hoje' (travado): soma das compras do bot desde 00h, orçamento e quanto resta."""
+        if not self.market_store or time.time() - self._spent_at < 2:
+            return
+        self._spent_at = time.time()
+        try:
+            spent = self.market_store.spent_today()
+        except Exception:
+            return
+        budget = self.cfg["market"]["daily_budget"]
+        self.spent_var.set(f"{self._gold(spent)} de {self._gold(budget)} (resta {self._gold(max(0, budget - spent))})")
 
     # ------------------------------------------------------ market: imbuements
     def _build_market_imb(self, tab):
@@ -540,22 +643,12 @@ class App:
         self.imb_watch = tk.BooleanVar()
         ctk.CTkCheckBox(ctrl, text="Observar", variable=self.imb_watch, fg_color=ACCENT, hover_color=ACCENT_HOVER,
                         text_color=TEXT, command=self._imb_save).pack(side="left", padx=8, pady=6)
-        ctk.CTkLabel(ctrl, text="Nível", text_color=TEXT).pack(side="left", padx=(12, 4))
-        self.imb_tier = ctk.CTkSegmentedButton(ctrl, values=imb.TIER_NAMES, selected_color=ACCENT,
-                                               selected_hover_color=ACCENT_HOVER, text_color=TEXT,
-                                               command=lambda v: self._imb_save())
-        self.imb_tier.set(imb.TIER_NAMES[0])
-        self.imb_tier.pack(side="left")
-        ctk.CTkLabel(ctrl, text="Aplicações", text_color=TEXT).pack(side="left", padx=(12, 4))
-        self.imb_uses = tk.StringVar(value="1")
-        uses = ctk.CTkEntry(ctrl, textvariable=self.imb_uses, width=46, fg_color=BG)
-        uses.pack(side="left")
-        uses.bind("<FocusOut>", lambda e: self._imb_save())
-        uses.bind("<Return>", lambda e: self._imb_save())
+        ctk.CTkLabel(ctrl, text="acompanha os 3 materiais (todos os níveis) ao vivo", text_color=MUTED
+                     ).pack(side="left", padx=(12, 4))
 
-        cols = ("mat", "uso", "precisa", "tenho", "falta", "menor", "justo", "venda", "custo")
-        heads = ("Material", "Por uso", "Precisa", "Tenho", "Falta", "Menor", "Justo", "À venda", "Custo (falta)")
-        widths = (140, 52, 56, 52, 48, 72, 72, 56, 110)
+        cols = ("nivel", "mat", "tenho", "menor", "justo", "desc", "venda", "qual")
+        heads = ("Nível", "Material", "Tenho", "Menor", "Justo", "Desc.", "À venda", "Qualidade")
+        widths = (74, 170, 60, 80, 80, 56, 64, 86)
         self.imb_tree = ttk.Treeview(right, columns=cols, show="headings", height=4, style="Market.Treeview")
         for col, head, width in zip(cols, heads, widths):
             self.imb_tree.heading(col, text=head)
@@ -602,8 +695,6 @@ class App:
         d = self.imb_by_id[imb_id]
         self.imb_watch.set(bool(rule.get("watch")))
         self.imb_buy.set(bool(rule.get("buy")))
-        self.imb_tier.set(imb.TIER_NAMES[int(rule.get("tier", 0))])
-        self.imb_uses.set(str(rule.get("uses", 1)))
         self.imb_pct.set(str(rule.get("pay_pct", 80)))
         effect = d.get("effect") or {}
         values = " / ".join(str(v) for v in effect.get("values") or [])
@@ -622,8 +713,7 @@ class App:
                 return max(low, min(high, int(str(var.get()).replace(".", "") or default)))
             except ValueError:
                 return default
-        rule = {"watch": self.imb_watch.get(), "tier": imb.TIER_NAMES.index(self.imb_tier.get()),
-                "uses": num(self.imb_uses, 1, 1, 100), "buy": self.imb_buy.get(), "pay_pct": num(self.imb_pct, 80, 10, 100)}
+        rule = {"watch": self.imb_watch.get(), "buy": self.imb_buy.get(), "pay_pct": num(self.imb_pct, 80, 10, 100)}
         if rule["buy"] and not rule["watch"]:
             rule["watch"] = True
             self.imb_watch.set(True)
@@ -634,8 +724,8 @@ class App:
         self.cfg["market"]["imbuements"] = rules
         self.save()
         name = self.imb_by_id[self.imb_selected]["name"]
-        self.log(f"market: {name} {imb.TIER_NAMES[rule['tier']]} x{rule['uses']}: observar={rule['watch']} "
-                 f"comprar={rule['buy']} até {rule['pay_pct']}% do justo")
+        self.log(f"market: {name}: observar={rule['watch']} comprar oportunidades={rule['buy']} "
+                 f"até {rule['pay_pct']}% do justo")
         self._imb_marks()
         self._imb_view = None
         self._imb_render()
@@ -645,43 +735,36 @@ class App:
             return
         watcher = getattr(self.runner, "market", None) if self.runner.running else None
         rule = self._imb_rule(self.imb_selected)
-        tier = imb.TIER_NAMES.index(self.imb_tier.get())
-        uses = rule.get("uses", 1)
-        view = (self.imb_selected, tier, uses, watcher.last_run if watcher else None)
+        pct = rule.get("pay_pct", 80)
+        view = (self.imb_selected, pct, rule.get("watch"), watcher.last_run if watcher else None,
+                getattr(watcher, "last_live", None))
         if view == self._imb_view:
             return
         self._imb_view = view
         board = watcher.board if watcher else {}
         owned = watcher.owned if watcher else {}
-        p = imb.plan(self.imb_by_id[self.imb_selected], tier, uses, board, owned, self.imb_data.get("rules"))
         self.imb_tree.delete(*self.imb_tree.get_children())
-        pct = rule.get("pay_pct", 80)
-        for line in p.lines:
-            ev = line.ev
+        chances = []
+        for tier, material in enumerate(self.imb_by_id[self.imb_selected]["materials"]):
+            key = material["name"].casefold()
+            ev = board.get(key)
             tag = (ev.quality if ev and ev.quality else ("ok" if ev and ev.offers else "vazio"))
-            cost = line.cost_missing
             self.imb_tree.insert("", "end", tags=(tag,), values=(
-                line.display, line.per_use, line.need, line.have, line.missing or "✓",
-                self._gold(line.lowest), self._gold(line.fair), line.on_sale or "-",
-                "-" if not line.missing else ("sem oferta" if cost is None else self._gold(cost))))
-        parts = []
+                imb.TIER_NAMES[tier], material["display"], owned.get(key, 0) if watcher else "-",
+                self._gold(ev.lowest_sell if ev else None), self._gold(ev.fair if ev else None),
+                f"{ev.discount:.0%}" if ev and ev.discount is not None else "-",
+                (ev.sell_qty or "-") if ev else "-", (ev.quality or "-") if ev else "-"))
+            if ev and ev.fair and ev.offers and ev.lowest_sell <= ev.fair * pct / 100:
+                chances.append(f"{material['display']} a {self._gold(ev.lowest_sell)}")
         if not watcher:
-            parts.append("Ligue o bot para ver os preços e o que você já tem.")
+            text = "Ligue o bot para ver os preços ao vivo."
         elif not rule.get("watch"):
-            parts.append("Marque 'Observar' para o bot ler os preços desses materiais a cada ciclo.")
+            text = "Marque 'Observar' para o bot acompanhar esses materiais ao vivo."
+        elif chances:
+            text = f"Oportunidade agora (até {pct}% do justo): " + " · ".join(chances)
         else:
-            total = p.cost_missing
-            parts.append("Materiais completos ✓" if total == 0 else
-                         ("Falta comprar: algum material sem oferta suficiente" if total is None else
-                          f"Comprar o que falta: {self._gold(total)} de ouro"))
-            fair = p.fair_total
-            if fair:
-                parts.append(f"Valor justo dos materiais: {self._gold(fair)}")
-            tokens = [f"{name.title()}: {self._gold(c)}" for name, c in p.token_cost.items() if c is not None]
-            if tokens:
-                parts.append("Pagando com 10 tokens por aplicação → " + " · ".join(tokens))
-            parts.append(f"Taxa do jogo: {self._gold(p.fee)} · compra automática paga até {pct}% do justo")
-        self.imb_summary.configure(text="\n".join(parts))
+            text = f"Nenhuma oferta até {pct}% do justo no momento."
+        self.imb_summary.configure(text=text)
 
     def _build_market_items(self, tab):
         style = ttk.Style()

@@ -8,8 +8,6 @@ DIFFICULTIES = ["Fácil", "Normal", "Difícil", "Insano", "Pesadelo", "Inferno",
 DEFAULTS = {
     "cdp_url": "http://127.0.0.1:9224",   # IdleDeck com depuracao remota (mesma porta dos outros bots)
     "poll_seconds": 5,                    # 1 leitura (1 evaluate) a cada N segundos
-    # "hunt" = mantem a party caçando | "watch" = so' vigia (relogin, avisos, loot) e nao mexe na caça/treino
-    "mode": "hunt",
     "hunt": "",                           # caça padrao (escolhida pelo usuario); vazio = sem caça padrao -> treina
     # stamina de caça (max 42h; abaixo de 14h a XP cai pela metade): treina abaixo de train_below ate resume
     "stamina": {"enabled": True, "train_below_hours": 14, "resume_hours": 24},

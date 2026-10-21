@@ -241,9 +241,7 @@ class Engine:
                 self._prey(acc, st, current)
                 return
 
-        # 7) caça
-        if self.cfg["mode"] != "hunt":
-            return
+        # 7) destino: sempre caça ou treino (usuario 20/10: sem modo 'so vigiar')
         target = self.target_hunt(acc, st)
         self.snapshot["target"] = target or "treino"
         if not target:
@@ -287,8 +285,6 @@ class Engine:
 
     def _settled(self, st, current):
         """Ja esta na caça que o bot quer? (nao escolhe Prey pra uma caça que vai trocar em seguida)"""
-        if self.cfg["mode"] != "hunt":
-            return True
         if self.resting:
             return False
         hunt, _, _ = self.goal_target(st)

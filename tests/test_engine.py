@@ -251,12 +251,12 @@ class EngineTest(unittest.TestCase):
         eng.tick(acc)
         self.assertEqual(names(acc)[-1], "start_hunt")
 
-    def test_watch_mode_never_touches_hunt(self):
-        acc = FakeAccount(phase="house")
-        eng, clock, _ = make(acc, mode="watch")
-        for _ in range(3):
-            eng.tick(acc)
-        self.assertEqual(names(acc), ["loot_settings"])
+    def test_old_watch_mode_is_ignored_never_idle(self):
+        acc = FakeAccount(phase="house_idle")
+        eng, clock, _ = make(acc, mode="watch")          # config antiga 'Só vigiar': agora sempre caça ou treina
+        eng.tick(acc)
+        eng.tick(acc)
+        self.assertEqual(names(acc)[-1], "start_training")
 
     def test_relogin_with_saved_login(self):
         acc = FakeAccount(phase="login")

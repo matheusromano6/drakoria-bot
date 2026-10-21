@@ -334,3 +334,14 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   Depois de iniciar, 20 s de espera (o jogo demora pra mostrar a caça; antes iniciava 2x).
 - Objetivos: cada task escolhida mostra 'Market: N à venda a partir de X' (watcher.extra_items + api.search, busca
   'search=' do Market por nome exato).
+
+## v1.9.0 - relatorio de compras, gasto do dia, sem modo (20/10/2026 ~22:30, usuario)
+- Market: rodape com 'Gasto hoje' (campo travado: gasto de 00h / orçamento / resta; Store.spent_today a cada 2 s).
+  Sub-aba Relatório: Hoje / Ontem / 7 dias / 30 dias / Tudo ou de-até (dd/mm/aaaa); tabela Data/hora, Item, Qtd,
+  Preço, Total, Motivo + resumo (compras, itens, ouro, itens com mais gasto). Store.purchases_between; coluna
+  purchase.reason (motivo, ex. 'oportunidade Vampirism') criada sozinha em bancos antigos (ALTER TABLE).
+- Usuario ja tinha 5 compras reais pelo bot em 20/10 (22:05-22:26): vampire teeth, piece of dead brain x4, bloody
+  pincers x17 = 67.000 de ouro (compra ao vivo por oportunidade funcionando).
+- Imbuements: sem nivel/aplicações; tabela Nível/Material/Tenho/Menor/Justo/Desc./À venda/Qualidade dos 3 materiais
+  + 'Oportunidade agora (até X% do justo)'. Regra salva: {watch, buy, pay_pct}.
+- Regras: sem 'Modo' (cfg mode ignorado; config antiga 'Só vigiar' NAO deixa o bot parado): sempre caça ou treina.

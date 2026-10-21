@@ -23,6 +23,9 @@ class Store:
         self.clock = clock
         with self._db() as db:
             db.executescript(SCHEMA)
+            cols = [r[1] for r in db.execute("PRAGMA table_info(purchase)")]
+            if "reason" not in cols:                 # bancos antigos (v1.4-v1.8): motivo da compra
+                db.execute("ALTER TABLE purchase ADD COLUMN reason TEXT")
 
     @contextlib.contextmanager
     def _db(self):
@@ -48,10 +51,11 @@ class Store:
                             float(d.get("minimum_price_gold") or 0), float(d.get("maximum_price_gold") or 0),
                             float(d.get("quantity_traded") or 0), int(d.get("trades_count") or 0)))
 
-    def add_purchase(self, item_id, name, quantity, price, offer_id, delivery_id, auto):
+    def add_purchase(self, item_id, name, quantity, price, offer_id, delivery_id, auto, reason=""):
         with self._db() as db:
-            db.execute("INSERT INTO purchase VALUES (?,?,?,?,?,?,?,?,?)",
-                       (self.clock(), item_id, name, quantity, price, quantity * price, offer_id, delivery_id, int(auto)))
+            db.execute("INSERT INTO purchase (ts, item_id, name, quantity, price, total, offer_id, delivery_id, auto, reason) "
+                       "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                       (self.clock(), item_id, name, quantity, price, quantity * price, offer_id, delivery_id, int(auto), reason))
 
     def spent_today(self):
         with self._db() as db:
@@ -65,6 +69,14 @@ class Store:
             row = db.execute("SELECT COALESCE(SUM(quantity), 0) FROM purchase WHERE auto = 1 AND item_id = ?",
                              (str(item_id),)).fetchone()
         return int(row[0])
+
+    def purchases_between(self, start=None, end=None):
+        """Compras entre dois horarios (timestamps; None = sem limite), da mais nova pra mais antiga:
+        [(ts, nome, quantidade, preço, total, motivo)]."""
+        with self._db() as db:
+            return db.execute("SELECT ts, name, quantity, price, total, COALESCE(reason, '') FROM purchase "
+                              "WHERE ts >= ? AND ts < ? ORDER BY ts DESC",
+                              (start if start is not None else 0, end if end is not None else 4e12)).fetchall()
 
     def purchases(self, limit=50):
         with self._db() as db:

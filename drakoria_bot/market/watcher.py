@@ -212,7 +212,7 @@ class MarketWatcher:
                 self.log(f"market: compra de {ev.name} falhou: {error}")
                 return wallet
             delivery = (res.get("delivery") or {}).get("id")
-            self.store.add_purchase(ev.item_id, ev.name, quantity, price, offer["id"], delivery, auto=True)
+            self.store.add_purchase(ev.item_id, ev.name, quantity, price, offer["id"], delivery, auto=True, reason=reason)
             wallet -= quantity * price
             msg = (f"comprou {quantity}x {ev.name} a {int(price):,} (total {int(quantity * price):,}) "
                    f"- {reason}").replace(",", ".")
