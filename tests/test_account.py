@@ -25,6 +25,8 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(parse_state(raw(scene="panel city-temple-scene house-scene city-temple-idle-stage", training=True)).phase, "house")
         self.assertEqual(parse_state(raw(scene="panel city-temple-scene house-scene city-temple-idle-stage")).phase, "house_idle")
         self.assertEqual(parse_state(raw(hasGame=False, landing=True, scene="")).phase, "login")
+        # 20/10: pagina inicial com a interface do jogo escondida atras (cena antiga ainda no DOM): e' login
+        self.assertEqual(parse_state(raw(hasGame=False, landing=True)).phase, "login")
         self.assertEqual(parse_state(raw(hasGame=False, error=True, scene="")).phase, "error")
         self.assertEqual(parse_state(raw(disconnected=True)).phase, "error")
         self.assertEqual(parse_state(raw(scene="")).phase, "unknown")

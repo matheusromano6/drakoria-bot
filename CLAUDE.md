@@ -355,3 +355,11 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   depois; log 1x 'janela aberta pelo usuário'. O Market ao vivo continua (usa a API, nao a tela).
 - Teste ao vivo 22:52: o codigo novo esperou, mas a lista fechou porque o bot do usuario (v1.9.0) estava rodando na
   mesma aba. Nesse meio tempo o bot dele comprou 13 some grimeleech wings a 10k (justo 200k) - oportunidade Void.
+
+## v1.9.2 - login automatico (20/10/2026 ~23:45)
+- BUG: na pagina inicial (deslogado) a interface do jogo continua no DOM, ESCONDIDA -> hasGame dava true e o bot
+  achava que estava logado (nunca relogava). Agora hasGame = .td-member/.topbar-gold-balance VISIVEL.
+- login(): clica 'Entrar' (abre o form, escondido ate entao), preenche input[name=username] e input[type=password]
+  visiveis, 'Entrar no jogo', espera o jogo VISIVEL (30 s). Validado ao vivo ate abrir o form (Claude nao digita senha).
+- 23:36: o Brave foi fechado -> porta 9230 livre -> o bot abriu o IdleDeck com --remote-debugging-port=9230 (launcher)
+  e a pagina do Drakoria estava deslogada.

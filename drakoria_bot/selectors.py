@@ -91,6 +91,9 @@ PREY_ASK_CANCEL = ".drk-prey-ask button:not(.green)"   # 'Cancelar'
 LOGIN_OPEN_TEXT = r"^(Entrar|Já tenho conta)$"
 LOGIN_SUBMIT_TEXT = r"Entrar no jogo"
 LOGIN_PASSWORD = "input[type=password]"
+LOGIN_USER = "input[name=username]"               # 'Seu usuário' (o form fica escondido ate clicar 'Entrar')
+# a interface do jogo EXISTE (escondida) atras da pagina inicial: 'logado' = elemento do jogo VISIVEL (20/10)
+GAME_VISIBLE = ".td-member, .topbar-gold-balance"
 
 # nunca clicar
 NEVER = [".online-logout-top-button", ".training-offline-menu-item", ".logout-menu-item", "[data-nav='gm']"]

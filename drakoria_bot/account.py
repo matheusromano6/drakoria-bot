@@ -13,7 +13,7 @@ READ_JS = r"""() => {
   const body = document.body ? document.body.innerText : '';
   const scene = document.querySelector('main.content > section');
   const out = {url: location.href, title: document.title, scene: scene ? String(scene.className) : '',
-    hasGame: !!document.querySelector('.td-member, .topbar-gold-balance'),
+    hasGame: [...document.querySelectorAll('.td-member, .topbar-gold-balance')].some(vis),
     loginForm: vis(document.querySelector('input[type=password]')),
     landing: /Monte seu grupo|Jogar grátis|Já tenho conta/.test(body.slice(0, 3000)),
     error: /Error 10\d\d|Bad Gateway|Cloudflare|ERR_|This site can.t be reached/i.test(body.slice(0, 2000)),
@@ -544,13 +544,14 @@ class Account:
             self._click_text("body", S.LOGIN_OPEN_TEXT)
             if not self._wait(lambda: self.page.locator(S.LOGIN_PASSWORD).first.is_visible(), 6):
                 raise RuntimeError("formulario de login nao apareceu")
-        pwd = self.page.locator(S.LOGIN_PASSWORD).first
-        form = pwd.locator("xpath=ancestor::form[1]")
-        scope = form if form.count() else self.page
-        user = scope.locator("input:not([type=password]):not([type=checkbox]):not([type=hidden])").first
+        pwd = self.page.locator(S.LOGIN_PASSWORD + ":visible").first
+        user = self.page.locator(S.LOGIN_USER + ":visible").first
+        if user.count() == 0:
+            user = self.page.locator("input[type=text]:visible").first
         user.fill(username)
         pwd.fill(password)
         if not self._click_text("body", S.LOGIN_SUBMIT_TEXT):
             pwd.press("Enter")
-        if not self._wait(lambda: self.page.evaluate("() => !!document.querySelector('.td-member, .topbar-gold-balance')"), 25):
+        visible = """s => [...document.querySelectorAll(s)].some(e => e.getBoundingClientRect().width > 0)"""
+        if not self._wait(lambda: self.page.evaluate(visible, S.GAME_VISIBLE), 30):
             raise RuntimeError("login nao entrou no jogo")
