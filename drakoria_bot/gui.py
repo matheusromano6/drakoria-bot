@@ -867,11 +867,18 @@ class App:
         pct.pack(side="left")
         pct.bind("<FocusOut>", lambda e: self._imb_save())
         pct.bind("<Return>", lambda e: self._imb_save())
-        ctk.CTkLabel(buy, text="% do preço justo", text_color=TEXT).pack(side="left", padx=4)
-        self.imb_hint = ctk.CTkLabel(right, text="Compra na hora (ao vivo) qualquer oferta de um material deste imbuement que esteja "
-                                                 "até X% do preço justo, tenha você estoque ou não, até acabar o orçamento do dia "
-                                                 "(rodapé; vale por dia, não por bot ligado). Precisa da chave geral ligada. "
-                                                 "Sem histórico de preço o bot não compra (não sabe se é barato).",
+        ctk.CTkLabel(buy, text="% do preço justo, estoque de", text_color=TEXT).pack(side="left", padx=4)
+        self.imb_stock = tk.StringVar(value="2")
+        stock = ctk.CTkEntry(buy, textvariable=self.imb_stock, width=36, fg_color=BG)
+        stock.pack(side="left")
+        stock.bind("<FocusOut>", lambda e: self._imb_save())
+        stock.bind("<Return>", lambda e: self._imb_save())
+        ctk.CTkLabel(buy, text="aplicações", text_color=TEXT).pack(side="left", padx=4)
+        self.imb_hint = ctk.CTkLabel(right, text="Compra na hora (ao vivo) material deste imbuement até X% do preço de referência, "
+                                                 "só até ter estoque para N aplicações (mochila + depot), dentro do orçamento do dia. "
+                                                 "Travas: no 1º minuto depois de ligar só lê o mercado; não compra se o preço justo "
+                                                 "estiver desatualizado (muita coisa à venda bem abaixo dele) e confere com os preços "
+                                                 "que o próprio bot viu nas últimas 24h. Precisa da chave geral ligada.",
                                      text_color=MUTED, anchor="w", justify="left", wraplength=640)
         self.imb_hint.pack(fill="x", padx=6)
         self._imb_view = None
@@ -893,6 +900,7 @@ class App:
         self.imb_watch.set(bool(rule.get("watch")))
         self.imb_buy.set(bool(rule.get("buy")))
         self.imb_pct.set(str(rule.get("pay_pct", 80)))
+        self.imb_stock.set(str(rule.get("stock", 2)))
         effect = d.get("effect") or {}
         values = " / ".join(str(v) for v in effect.get("values") or [])
         self.imb_title.configure(text=d["name"])
@@ -910,7 +918,8 @@ class App:
                 return max(low, min(high, int(str(var.get()).replace(".", "") or default)))
             except ValueError:
                 return default
-        rule = {"watch": self.imb_watch.get(), "buy": self.imb_buy.get(), "pay_pct": num(self.imb_pct, 80, 10, 100)}
+        rule = {"watch": self.imb_watch.get(), "buy": self.imb_buy.get(), "pay_pct": num(self.imb_pct, 80, 10, 100),
+                "stock": num(self.imb_stock, 2, 1, 50)}
         if rule["buy"] and not rule["watch"]:
             rule["watch"] = True
             self.imb_watch.set(True)
@@ -922,7 +931,7 @@ class App:
         self.save()
         name = self.imb_by_id[self.imb_selected]["name"]
         self.log(f"market: {name}: observar={rule['watch']} comprar oportunidades={rule['buy']} "
-                 f"até {rule['pay_pct']}% do justo")
+                 f"até {rule['pay_pct']}% do justo, estoque de {rule['stock']} aplicações")
         self._imb_marks()
         self._imb_view = None
         self._imb_render()

@@ -511,9 +511,12 @@ class Engine:
             if not ev.offers:
                 return 0
             if source == "auto":
-                if not ev.fair:
+                store = getattr(self.market, "store", None)
+                ref, why = A.trusted_price(ev, store.recent_lows(ev.item_id) if store else [])
+                if not ref:
+                    self.log(f"imbuement: não compro {ev.name} agora ({why}); vou caçar")
                     return 0
-                max_price = int(ev.fair * cfg.get("buy_pct", 100) / 100)
+                max_price = int(ref * cfg.get("buy_pct", 100) / 100)
             else:
                 max_price = 10 ** 12
             day, spent = self._imb_spent()

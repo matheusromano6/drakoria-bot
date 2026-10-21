@@ -54,9 +54,10 @@ DEFAULTS = {
         "auto_buy": False,                 # chave GERAL da compra automatica (desligada por padrao)
         "daily_budget": 200000,            # ouro maximo gasto pelo bot por dia
         "reserve_gold": 1000000,           # nunca deixa o ouro abaixo disso
-        "claim": True,                     # resgata a compra da Caixa do Mercado pro Banco
+        "claim": True,
+        "warmup_seconds": 60,              # ao ligar o bot: so' le o mercado nesse tempo, sem comprar                     # resgata a compra da Caixa do Mercado pro Banco
         "rules": {},                       # nome (minusculas) -> {watch, buy, max_price, quantity}
-        # imbuements observados: id -> {watch, tier 0..2, uses (aplicações), buy, pay_pct (% do justo que aceita pagar)}
+        # imbuements observados: id -> {watch, buy, pay_pct (% da referencia), stock (aplicações em estoque, padrao 2)}
         "imbuements": {},
     },
     # imbuements (aba Imbuements): metas por personagem/equipamento. O bot aplica/reaplica quando acaba e junta os

@@ -93,6 +93,12 @@ class Store:
             db.execute("INSERT INTO alert VALUES (?,?,?,?,?)", (self.clock(), str(item_id), offer_id, price, quality))
             return True
 
+    def recent_lows(self, item_id, hours=24):
+        """[(ts, menor preço)] lidos pelo bot desse item nas ultimas 'hours' horas."""
+        with self._db() as db:
+            return db.execute("SELECT ts, lowest_sell FROM snapshot WHERE item_id = ? AND ts >= ? AND lowest_sell > 0",
+                              (str(item_id), self.clock() - hours * 3600)).fetchall()
+
     def history(self, item_id, limit=200):
         with self._db() as db:
             return db.execute("SELECT ts, lowest_sell, sell_qty, fair FROM snapshot WHERE item_id = ? ORDER BY ts DESC LIMIT ?",

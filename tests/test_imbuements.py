@@ -71,6 +71,7 @@ class ImbuementBuyTest(unittest.TestCase):
             "22534": detail([], [day(19, 20000, 40)], vwap=20000, item_id="22534", name="silencer claws")})
         self.api.assets = lambda: {"rope belt": 5}
         self.logs = []
+        self.cfg["warmup_seconds"] = 0
         self.w = MarketWatcher(self.cfg, self.store, self.logs.append, api_factory=lambda page: self.api)
         self.w.imb = {"imbuements": [VOID], "rules": {"goldFee": 250000, "goldTokenCost": 10, "silverTokenCost": 10}}
 
@@ -89,13 +90,47 @@ class ImbuementBuyTest(unittest.TestCase):
         p = self.w.plans()["void"]
         self.assertEqual([(l.name, l.missing) for l in p.lines], [("rope belt", 20), ("silencer claws", 25)])
 
-    def test_buys_opportunity_even_with_stock(self):
-        self.api.assets = lambda: {"rope belt": 999}            # estoque cheio: compra mesmo assim (revenda)
+    def test_opportunity_only_up_to_stock(self):
         self.cfg.update(auto_buy=True, daily_budget=10**9)
-        self.cfg["imbuements"] = {"void": {"watch": True, "tier": 0, "uses": 1, "buy": True, "pay_pct": 90}}
-        self.tick()                    # justo 25k, paga ate 22.500 -> toda a oferta de 21k (10 un.), nao a de 24k
+        self.cfg["imbuements"] = {"void": {"watch": True, "buy": True, "pay_pct": 90, "stock": 1}}
+        self.tick()                    # rope belt: 25 por aplicação, tem 5 -> compra so' 20 (das 10 de 21k cabem 10)
         self.assertEqual([c for c in self.api.calls if c[0] == "buy"], [("buy", "a", 10)])
-        self.assertTrue(any("oportunidade Void" in line for line in self.logs))
+        self.api.assets = lambda: {"rope belt": 999}            # estoque cheio: nao compra
+        self.api.calls.clear()
+        self.tick()
+        self.assertNotIn("buy", [c[0] for c in self.api.calls])
+
+    def test_warmup_reads_but_does_not_buy(self):
+        self.cfg.update(auto_buy=True, daily_budget=10**9, warmup_seconds=60)
+        self.cfg["imbuements"] = {"void": {"watch": True, "buy": True, "pay_pct": 90}}
+        self.tick()
+        self.assertIn(("detail", "12448"), self.api.calls)
+        self.assertNotIn("buy", [c[0] for c in self.api.calls])
+        self.w.last_run = None
+        self.w.tick(None, 1_000_061.0)                           # passou o 1o minuto
+        self.assertIn("buy", [c[0] for c in self.api.calls])
+
+    def test_stale_fair_price_blocks(self):
+        # caso real 21/10: 'justo' 200k e um monte a venda bem abaixo -> o justo esta velho, nao compra
+        self.api.details["12448"] = detail([offer("a", 22000, 995)], [day(20, 200000, 3)], vwap=200000,
+                                           item_id="12448", name="rope belt")
+        self.cfg.update(auto_buy=True, daily_budget=10**9)
+        self.cfg["imbuements"] = {"void": {"watch": True, "buy": True, "pay_pct": 90, "stock": 50}}
+        self.tick()
+        self.assertNotIn("buy", [c[0] for c in self.api.calls])
+        self.assertTrue(any("desatualizado" in line for line in self.logs))
+
+    def test_own_readings_lower_the_reference(self):
+        for i, price in enumerate((20000, 20500, 21000)):       # o bot viu 20-21k nas ultimas horas
+            self.store.clock = lambda i=i: 1_000_000.0 - 7200 + i * 3000
+            self.store.save_evaluation(type("E", (), {"item_id": "12448", "name": "rope belt", "lowest_sell": price,
+                                                      "sell_qty": 5, "highest_buy": None, "fair": 25000,
+                                                      "discount": None, "quality": None})(), {})
+        self.store.clock = lambda: 1_000_000.0
+        self.cfg.update(auto_buy=True, daily_budget=10**9)
+        self.cfg["imbuements"] = {"void": {"watch": True, "buy": True, "pay_pct": 90}}
+        self.tick()                    # referencia vira ~20,5k -> 90% = 18,4k < 21k: nao e' oportunidade
+        self.assertNotIn("buy", [c[0] for c in self.api.calls])
 
     def test_daily_budget_limits_opportunities(self):
         self.cfg.update(auto_buy=True, daily_budget=50000, reserve_gold=0)

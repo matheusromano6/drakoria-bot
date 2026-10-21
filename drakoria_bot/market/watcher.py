@@ -30,6 +30,9 @@ class MarketWatcher:
         self.extra_items = lambda: []      # nomes de itens extras (ex.: itens das tasks escolhidas) - o runner liga
         self.task_market = {}              # nome_minusculo -> {'lowest', 'qty'} desses itens extras
         self.error = ""
+        self.started = None                # 1a leitura desta execução: compras so' depois do aquecimento
+        self.now = 0
+        self.distrust = {}                 # item -> ultimo aviso de 'preço nao confiavel' (1 por hora)
         try:
             self.imb = I.load()
         except Exception:
@@ -56,6 +59,7 @@ class MarketWatcher:
             return 0
         if not events:
             return 0
+        self.now = now
         self.events_seen = getattr(self, "events_seen", 0) + len(events)
         watched = self.watched_ids()
         ids = []
@@ -98,6 +102,9 @@ class MarketWatcher:
         if not self.cfg.get("enabled") or not self.due(now):
             return False
         self.last_run = now
+        self.now = now
+        if self.started is None:
+            self.started = now
         api = self.api_factory(page)
         try:
             self._scan(api)
@@ -151,10 +158,25 @@ class MarketWatcher:
                                                self.owned, self.imb.get("rules"))
         return out
 
+    def warming(self):
+        """Ligou agora: o 1o minuto so' le o mercado (preços e o que o usuario tem), sem comprar."""
+        return self.started is None or self.now - self.started < self.cfg.get("warmup_seconds", 60)
+
+    def reference(self, ev):
+        """Preço de referencia confiavel pra compra (ou None, avisando no log 1x por hora o motivo)."""
+        ref, why = A.trusted_price(ev, self.store.recent_lows(ev.item_id))
+        if ref is None and self.now - self.distrust.get(ev.item_id, -1e9) >= 3600:
+            self.distrust[ev.item_id] = self.now
+            self.log(f"market: não compro {ev.name}: {why}")
+        return ref
+
     def _buy_imbuements(self, api, wallet):
-        """OPORTUNIDADE (usuario 20/10): pra cada imbuement com compra ligada, compra QUALQUER material dele (os 3, tenha
-        ou nao estoque - pode revender) cuja oferta esteja ate pay_pct% do preço justo, enquanto houver orçamento do DIA
-        (soma das compras do bot no dia, no market.db) e sem passar da reserva de ouro. Sem preço justo nao compra."""
+        """OPORTUNIDADE: pra cada imbuement com compra ligada, compra os materiais (os 3) cuja oferta esteja ate pay_pct%
+        do preço de REFERENCIA (trusted_price: justo do servidor conferido com as ofertas e as leituras do bot), so' ate
+        ter material pra 'stock' aplicações (mochila + depot, me/assets), dentro do orçamento do dia e da reserva.
+        Nada no aquecimento (1o minuto)."""
+        if self.warming():
+            return wallet
         done = set()
         for definition in self.imb["imbuements"]:
             rule = (self.cfg.get("imbuements") or {}).get(definition["id"]) or {}
@@ -166,13 +188,19 @@ class MarketWatcher:
                 if key in done or not ev or not ev.offers or not ev.fair:
                     continue
                 done.add(key)
-                max_price = int(ev.fair * float(rule.get("pay_pct", 80)) / 100)
+                want = int(material["qty"]) * int(rule.get("stock", 2)) - int(self.owned.get(key, 0))
+                if want <= 0:
+                    continue
+                ref = self.reference(ev)
+                if not ref:
+                    continue
+                max_price = int(ref * float(rule.get("pay_pct", 80)) / 100)
                 if (A._num(ev.offers[0].get("unitPriceGold")) or 0) > max_price:
                     continue
                 if wallet is None:
                     wallet = A._num((api.overview().get("wallet") or {}).get("goldSpendable")) or 0
                 before = self.store.bought(ev.item_id)
-                wallet = self._buy_up_to(api, ev, max_price, 10 ** 9, wallet, f"oportunidade {definition['name']}")
+                wallet = self._buy_up_to(api, ev, max_price, want, wallet, f"oportunidade {definition['name']}")
                 got = self.store.bought(ev.item_id) - before
                 self.owned[key] = self.owned.get(key, 0) + got
         return wallet
@@ -194,9 +222,12 @@ class MarketWatcher:
 
     def _buy(self, api, ev, rule, wallet):
         want = int(rule.get("quantity") or 0) - self.store.bought(ev.item_id)
-        if want <= 0:
+        if want <= 0 or self.warming():
             return wallet
-        max_price = int(rule.get("max_price") or 0) or ev.suggested_max
+        max_price = int(rule.get("max_price") or 0)
+        if not max_price:                       # sem preço do usuario: 20% abaixo da referencia confiavel
+            ref = self.reference(ev)
+            max_price = int(ref * 0.8) if ref else 0
         if not max_price:
             return wallet
         return self._buy_up_to(api, ev, max_price, want, wallet, "regra do item")

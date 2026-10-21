@@ -421,3 +421,12 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   coletar + setLootSellFilter nao vender), imb_hunt manda na caça (dificuldade propria). Reaplicar manual (250k) em vez
   da renovação nativa (750k). end 'loop' = continua caçando o material com menos aplicações em estoque.
 - Validado so leitura: Pally void ok 29h46; Kina capacete void 'aplicar' faltam 14 silencer claws -> Upper Roshamuul 3,4%.
+
+## Travas de compra do Market (21/10/2026, depois do prejuizo)
+- Caso: bot ligado depois de um dia parado, 'justo' (VWAP 30d) do Grimeleech Wings = 200k com 995 a venda a 22-45k ->
+  'oportunidade' sem limite de quantidade -> 582 asas (~21,6M) com orçamento do dia em 2 bilhoes (usuario).
+- Agora (analysis.trusted_price + watcher): (1) aquecimento: `warmup_seconds` 60 so le, sem comprar; (2) estoque: oportunidade
+  so ate `stock` aplicações (padrao 2) contando me/assets; (3) justo desatualizado: unidades a venda abaixo de 70% do justo
+  > max(10, 3 dias de negocio) -> nao compra (loga 1x/h); (4) referencia = min(justo, mediana das leituras do PROPRIO bot
+  nas ultimas 24h, se cobrirem >= 1h). Regra de item sem preço maximo usa 80% da referencia. Imbuements 'Automático' idem.
+- Conferido ao vivo: Grimeleech bloqueado (413 a venda abaixo de 70%, ~24/dia); silencer/rope belt/teeth seguem normais.

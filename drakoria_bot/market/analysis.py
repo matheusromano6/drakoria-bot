@@ -90,6 +90,30 @@ def evaluate(detail, cfg):
     return ev
 
 
+def trusted_price(ev, own, cheap_below=0.7, book_days=3, min_span=3600):
+    """Travas antes de comprar (usuario 21/10/2026: o bot ligou depois de um dia parado, o preço justo de 30 dias
+    estava velho - Grimeleech 'justo' 200k com 995 a venda a 22k - e comprou 582 asas).
+    own = [(ts, menor preço)] das leituras do PROPRIO bot nas ultimas 24h.
+    Devolve (preço de referencia, '') ou (None, motivo pra nao comprar):
+      - sem preço justo -> nao sabe se e' barato;
+      - muitas unidades a venda bem abaixo do justo (mais que 'book_days' dias de negocio) -> o justo esta desatualizado;
+      - leituras proprias cobrindo pelo menos 'min_span' s -> referencia = o menor entre o justo e a mediana delas."""
+    if not ev.fair:
+        return None, "sem histórico de preço"
+    cheap = sum(_num(o.get("remainingQuantity")) or 0 for o in ev.offers
+                if (_num(o.get("unitPriceGold")) or 0) < ev.fair * cheap_below)
+    if cheap > max(10, book_days * (ev.per_day or 0)):
+        return None, (f"{int(cheap)} à venda abaixo de {int(cheap_below * 100)}% do justo "
+                      f"(negocia ~{int(ev.per_day or 0)}/dia): preço justo desatualizado")
+    ref = ev.fair
+    prices = sorted(p for _, p in own if p)
+    if len(prices) >= 3 and max(t for t, _ in own) - min(t for t, _ in own) >= min_span:
+        mid = len(prices) // 2
+        median = prices[mid] if len(prices) % 2 else (prices[mid - 1] + prices[mid]) / 2
+        ref = min(ref, median)
+    return ref, ""
+
+
 def _weighted(days):
     qty = sum(_num(d.get("quantity_traded")) or 0 for d in days)
     if not qty:

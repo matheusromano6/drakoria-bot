@@ -43,6 +43,7 @@ class LiveTest(unittest.TestCase):
             "10602": detail([], [day(19, 5000, 30)], vwap=5000, item_id="10602", name="vampire teeth"),
             "999": detail([offer("o", 1, 3)], [day(19, 50, 3)], vwap=50, item_id="999", name="outro")})
         self.logs = []
+        self.cfg["warmup_seconds"] = 0
         self.w = MarketWatcher(self.cfg, self.store, self.logs.append, api_factory=lambda page: self.api)
         self.w.imb = {"imbuements": [VAMP], "rules": {"goldFee": 250000, "goldTokenCost": 10, "silverTokenCost": 10}}
         self.cfg["imbuements"] = {"vampirism": {"watch": True, "tier": 0, "uses": 1, "buy": True, "pay_pct": 90}}

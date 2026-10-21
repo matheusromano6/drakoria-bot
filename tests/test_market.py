@@ -117,6 +117,7 @@ class WatcherTest(unittest.TestCase):
                                                      [day(18, 20000, 10), day(19, 20000, 10), day(20, 20000, 10)],
                                                      vwap=20000)})
         self.logs, self.notes = [], []
+        self.cfg["warmup_seconds"] = 0
         self.w = MarketWatcher(self.cfg, self.store, self.logs.append, notify=lambda t, x: self.notes.append((t, x)),
                                api_factory=lambda page: self.api)
 
