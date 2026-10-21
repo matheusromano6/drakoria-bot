@@ -108,13 +108,13 @@ def plan(definition, tier, uses, board, owned, rules=None):
 
 
 def watched_materials(cfg, data):
-    """Nomes (minusculos) dos materiais dos imbuements observados no nivel escolhido + os tokens."""
+    """Nomes (minusculos) de TODOS os materiais dos imbuements observados (os 3 niveis) + os tokens."""
     out = set()
     chosen = cfg.get("imbuements") or {}
     for definition in data["imbuements"]:
         rule = chosen.get(definition["id"]) or {}
         if rule.get("watch"):
-            out.update(m["name"].casefold() for m in materials_for(definition, rule.get("tier", 0)))
+            out.update(m["name"].casefold() for m in definition["materials"])
     if out:
         out.update({"gold token", "silver token"})
     return out

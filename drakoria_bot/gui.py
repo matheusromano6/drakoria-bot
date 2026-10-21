@@ -537,17 +537,19 @@ class App:
         buy = ctk.CTkFrame(right, fg_color=PANEL_ALT, corner_radius=6)
         buy.pack(fill="x", padx=4, pady=6)
         self.imb_buy = tk.BooleanVar()
-        ctk.CTkCheckBox(buy, text="Comprar o que falta automaticamente", variable=self.imb_buy, fg_color=ACCENT,
+        ctk.CTkCheckBox(buy, text="Comprar oportunidades (qualquer material deste imbuement)", variable=self.imb_buy, fg_color=ACCENT,
                         hover_color=ACCENT_HOVER, text_color=TEXT, command=self._imb_save).pack(side="left", padx=8, pady=6)
         ctk.CTkLabel(buy, text="pagando até", text_color=TEXT).pack(side="left", padx=(12, 4))
-        self.imb_pct = tk.StringVar(value="90")
+        self.imb_pct = tk.StringVar(value="80")
         pct = ctk.CTkEntry(buy, textvariable=self.imb_pct, width=46, fg_color=BG)
         pct.pack(side="left")
         pct.bind("<FocusOut>", lambda e: self._imb_save())
         pct.bind("<Return>", lambda e: self._imb_save())
         ctk.CTkLabel(buy, text="% do preço justo", text_color=TEXT).pack(side="left", padx=4)
-        self.imb_hint = ctk.CTkLabel(right, text="Compra automática precisa da chave geral (embaixo) ligada. Sem histórico de "
-                                                 "preço o bot não compra o material (não sabe se é barato).",
+        self.imb_hint = ctk.CTkLabel(right, text="Compra na hora (ao vivo) qualquer oferta de um material deste imbuement que esteja "
+                                                 "até X% do preço justo, tenha você estoque ou não, até acabar o orçamento do dia "
+                                                 "(rodapé; vale por dia, não por bot ligado). Precisa da chave geral ligada. "
+                                                 "Sem histórico de preço o bot não compra (não sabe se é barato).",
                                      text_color=MUTED, anchor="w", justify="left", wraplength=640)
         self.imb_hint.pack(fill="x", padx=6)
         self._imb_view = None
@@ -570,7 +572,7 @@ class App:
         self.imb_buy.set(bool(rule.get("buy")))
         self.imb_tier.set(imb.TIER_NAMES[int(rule.get("tier", 0))])
         self.imb_uses.set(str(rule.get("uses", 1)))
-        self.imb_pct.set(str(rule.get("pay_pct", 90)))
+        self.imb_pct.set(str(rule.get("pay_pct", 80)))
         effect = d.get("effect") or {}
         values = " / ".join(str(v) for v in effect.get("values") or [])
         self.imb_title.configure(text=d["name"])
@@ -589,7 +591,7 @@ class App:
             except ValueError:
                 return default
         rule = {"watch": self.imb_watch.get(), "tier": imb.TIER_NAMES.index(self.imb_tier.get()),
-                "uses": num(self.imb_uses, 1, 1, 100), "buy": self.imb_buy.get(), "pay_pct": num(self.imb_pct, 90, 10, 150)}
+                "uses": num(self.imb_uses, 1, 1, 100), "buy": self.imb_buy.get(), "pay_pct": num(self.imb_pct, 80, 10, 100)}
         if rule["buy"] and not rule["watch"]:
             rule["watch"] = True
             self.imb_watch.set(True)
@@ -621,7 +623,7 @@ class App:
         owned = watcher.owned if watcher else {}
         p = imb.plan(self.imb_by_id[self.imb_selected], tier, uses, board, owned, self.imb_data.get("rules"))
         self.imb_tree.delete(*self.imb_tree.get_children())
-        pct = rule.get("pay_pct", 90)
+        pct = rule.get("pay_pct", 80)
         for line in p.lines:
             ev = line.ev
             tag = (ev.quality if ev and ev.quality else ("ok" if ev and ev.offers else "vazio"))
@@ -803,7 +805,8 @@ class App:
             self._set_market(key, value)
 
     def notify(self, title, text):
-        """Aviso de oportunidade/compra: balão da bandeja (se estiver na bandeja) + bipe."""
+        """Aviso de oportunidade/compra: balão da bandeja (se estiver na bandeja) + som (compra = som proprio)."""
+        buying = title.startswith("Compra")
         def show():
             if self.tray_icon is not None:
                 try:
@@ -812,10 +815,17 @@ class App:
                     pass
             try:
                 import winsound
-                winsound.MessageBeep()
+                if buying:
+                    for freq in (880, 1175, 1568):          # 3 notas subindo: comprou
+                        winsound.Beep(freq, 140)
+                else:
+                    winsound.MessageBeep()
             except Exception:
                 pass
-        self.call_ui(show)
+        if buying:
+            threading.Thread(target=show, daemon=True).start()   # Beep bloqueia: fora da thread da interface
+        else:
+            self.call_ui(show)
 
     # ----------------------------------------------------------------- login
     def _build_login(self, tab):

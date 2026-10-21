@@ -54,7 +54,7 @@ class RecipeTest(unittest.TestCase):
     def test_watched_materials(self):
         data = {"imbuements": [VOID]}
         self.assertEqual(I.watched_materials({"imbuements": {"void": {"watch": True, "tier": 0}}}, data),
-                         {"rope belt", "gold token", "silver token"})
+                         {"rope belt", "silencer claws", "some grimeleech wings", "gold token", "silver token"})
         self.assertEqual(I.watched_materials({"imbuements": {"void": {"watch": False, "tier": 2}}}, data), set())
 
 
@@ -89,13 +89,28 @@ class ImbuementBuyTest(unittest.TestCase):
         p = self.w.plans()["void"]
         self.assertEqual([(l.name, l.missing) for l in p.lines], [("rope belt", 20), ("silencer claws", 25)])
 
-    def test_buys_only_missing_within_pay_pct(self):
+    def test_buys_opportunity_even_with_stock(self):
+        self.api.assets = lambda: {"rope belt": 999}            # estoque cheio: compra mesmo assim (revenda)
         self.cfg.update(auto_buy=True, daily_budget=10**9)
         self.cfg["imbuements"] = {"void": {"watch": True, "tier": 0, "uses": 1, "buy": True, "pay_pct": 90}}
-        self.tick()                    # falta 25 - 5 = 20; paga ate 22.500 -> so' a oferta de 21k (10 un.)
+        self.tick()                    # justo 25k, paga ate 22.500 -> toda a oferta de 21k (10 un.), nao a de 24k
         self.assertEqual([c for c in self.api.calls if c[0] == "buy"], [("buy", "a", 10)])
-        self.assertEqual(self.w.owned["rope belt"], 15)
-        self.assertTrue(any("Void Basic" in line for line in self.logs))
+        self.assertTrue(any("oportunidade Void" in line for line in self.logs))
+
+    def test_daily_budget_limits_opportunities(self):
+        self.cfg.update(auto_buy=True, daily_budget=50000, reserve_gold=0)
+        self.cfg["imbuements"] = {"void": {"watch": True, "tier": 0, "uses": 1, "buy": True, "pay_pct": 90}}
+        self.tick()
+        self.assertEqual([c for c in self.api.calls if c[0] == "buy"], [("buy", "a", 2)])     # 2 x 21k = 42k
+        self.api.calls.clear()
+        self.tick()                    # orçamento do dia acabou (sobram 8k)
+        self.assertNotIn("buy", [c[0] for c in self.api.calls])
+
+    def test_above_pay_pct_not_bought(self):
+        self.cfg.update(auto_buy=True, daily_budget=10**9)
+        self.cfg["imbuements"] = {"void": {"watch": True, "tier": 0, "uses": 1, "buy": True, "pay_pct": 80}}
+        self.tick()                    # 80% de 25k = 20k < 21k
+        self.assertNotIn("buy", [c[0] for c in self.api.calls])
 
     def test_no_buy_without_switches(self):
         self.cfg["imbuements"] = {"void": {"watch": True, "tier": 0, "uses": 1, "buy": True, "pay_pct": 100}}

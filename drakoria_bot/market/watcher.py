@@ -64,8 +64,6 @@ class MarketWatcher:
         if not ids:
             return 0
         try:
-            if any(r.get("buy") for r in (self.cfg.get("imbuements") or {}).values()):
-                self.owned = api.assets()
             wallet = None
             for item in ids:
                 detail = api.detail(item)
@@ -116,7 +114,7 @@ class MarketWatcher:
                          "highest_buy": A._num(i.get("highestBuy"))} for i in listing]
         wallet = None
         watched = I.watched_materials(self.cfg, self.imb)
-        if watched or any(r.get("buy") for r in (self.cfg.get("imbuements") or {}).values()):
+        if watched:
             self.owned = api.assets()
         for row in self.listing:
             rule = rule_for(self.cfg, row["name"])
@@ -145,25 +143,29 @@ class MarketWatcher:
         return out
 
     def _buy_imbuements(self, api, wallet):
-        """Completa os materiais que faltam dos imbuements com compra ligada, pagando ate pay_pct% do preço justo."""
+        """OPORTUNIDADE (usuario 20/10): pra cada imbuement com compra ligada, compra QUALQUER material dele (os 3, tenha
+        ou nao estoque - pode revender) cuja oferta esteja ate pay_pct% do preço justo, enquanto houver orçamento do DIA
+        (soma das compras do bot no dia, no market.db) e sem passar da reserva de ouro. Sem preço justo nao compra."""
+        done = set()
         for definition in self.imb["imbuements"]:
             rule = (self.cfg.get("imbuements") or {}).get(definition["id"]) or {}
             if not (rule.get("watch") and rule.get("buy")):
                 continue
-            p = I.plan(definition, rule.get("tier", 0), rule.get("uses", 1), self.board, self.owned, self.imb.get("rules"))
-            for line in p.lines:
-                if line.missing <= 0 or not line.ev or not line.ev.offers:
+            for material in definition["materials"]:
+                key = material["name"].casefold()
+                ev = self.board.get(key)
+                if key in done or not ev or not ev.offers or not ev.fair:
                     continue
-                if not line.fair:
-                    continue                    # sem historico nao da pra saber se e' barato
-                max_price = int(line.fair * float(rule.get("pay_pct", 90)) / 100)
+                done.add(key)
+                max_price = int(ev.fair * float(rule.get("pay_pct", 80)) / 100)
+                if (A._num(ev.offers[0].get("unitPriceGold")) or 0) > max_price:
+                    continue
                 if wallet is None:
                     wallet = A._num((api.overview().get("wallet") or {}).get("goldSpendable")) or 0
-                before = self.store.bought(line.ev.item_id)
-                wallet = self._buy_up_to(api, line.ev, max_price, line.missing, wallet,
-                                         f"{definition['name']} {I.TIER_NAMES[p.tier]}")
-                got = self.store.bought(line.ev.item_id) - before
-                self.owned[line.name.casefold()] = self.owned.get(line.name.casefold(), 0) + got
+                before = self.store.bought(ev.item_id)
+                wallet = self._buy_up_to(api, ev, max_price, 10 ** 9, wallet, f"oportunidade {definition['name']}")
+                got = self.store.bought(ev.item_id) - before
+                self.owned[key] = self.owned.get(key, 0) + got
         return wallet
 
     def _alert(self, ev, rule):

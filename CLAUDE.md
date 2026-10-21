@@ -308,3 +308,12 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   buffer (window.__drkEvents) e o motor esvazia a cada 1 s entre as leituras do jogo (Engine.run). Evento de item
   observado -> detail so' daquele item -> loga mudança de menor preço, alerta, compra. Varredura completa vira reserva.
 - Validado ao vivo 20:54: alerta MUITO BOA Vampire Teeth 10.000 (justo 20.000, -50%), 4 eventos ao vivo em 90 s.
+
+## v1.7.0 - Market por OPORTUNIDADE (20/10/2026 ~21:40, usuario)
+- Usuario: foco em valor/oportunidade, nao em aplicações; comprar mesmo tendo estoque (revender); orçamento POR DIA;
+  reagir em ~2 s; som ao comprar. Caso real 21:32: Piece of Dead Brain a 10k (justo 75k) foi visto ao vivo e alertado,
+  mas nao comprado (Vampirism Powerful x1 pede 5 e a conta tinha 129 -> nada faltando).
+- Agora: imbuement observado = acompanha os 3 materiais (todos os niveis); compra ligada = compra QUALQUER oferta
+  de material dele ate pay_pct% (padrao 80) do justo, toda a quantidade barata, limitada pelo orçamento do dia
+  (market.db, soma das compras do bot desde 00h - nao zera ao religar) e pela reserva. Sem justo nao compra.
+  Nivel/aplicações ficam so' pra mostrar o que falta. Compra = 3 bipes subindo (winsound.Beep em thread) + aviso.
