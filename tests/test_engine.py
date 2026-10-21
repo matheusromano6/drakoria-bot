@@ -68,6 +68,14 @@ class FakeAccount:
         self._call("current_hunt")
         return getattr(self, "hunt_name", None) or "Troll Cave"
 
+    def start_training(self):
+        self._call("start_training")
+        self.st.phase = "house"
+
+    def leave_hunt(self):
+        self._call("leave_hunt")
+        self.st.phase = "city"
+
     def stop_training(self):
         self._call("stop_training")
         self.st.phase = "house_idle"
@@ -150,20 +158,46 @@ def names(acc):
 
 
 class EngineTest(unittest.TestCase):
-    def test_first_tick_checks_loot_then_hunts_best(self):
+    def test_first_tick_checks_loot_then_hunts_chosen(self):
         acc = FakeAccount()
-        eng, clock, _ = make(acc)
+        eng, clock, _ = make(acc, hunt="Troll Cave")
         eng.tick(acc)
         self.assertEqual(acc.calls, [("loot_settings", True)])     # premium -> Auto Sell ligado + protecao
         eng.tick(acc)
-        self.assertEqual(names(acc)[1:], ["best_hunt", "start_hunt"])
         self.assertEqual(acc.calls[-1], ("start_hunt", "Troll Cave", "Normal"))
+        self.assertNotIn("best_hunt", names(acc))
         eng.tick(acc)                                                # caçando a certa: nada
-        self.assertEqual(len(acc.calls), 3)
+        self.assertEqual(len(acc.calls), 2)
+
+    def test_no_hunt_chosen_goes_training_never_idle(self):
+        acc = FakeAccount(phase="city")
+        eng, clock, logs = make(acc)
+        eng.tick(acc)
+        eng.tick(acc)
+        self.assertEqual(names(acc)[-1], "start_training")
+        eng.tick(acc)                                                # treinando: fica
+        self.assertEqual(names(acc).count("start_training"), 1)
+
+    def test_low_stamina_leaves_hunt_trains_and_returns(self):
+        acc = FakeAccount(phase="hunting", tracker=TROLLS)
+        acc.st.stamina = 13.5
+        eng, clock, logs = make(acc, hunt="Troll Cave")
+        eng.tick(acc)       # loot
+        eng.tick(acc)
+        self.assertEqual(names(acc)[-1], "leave_hunt")
+        eng.tick(acc)
+        self.assertEqual(names(acc)[-1], "start_training")
+        acc.st.stamina = 20                                          # ainda abaixo de 24: continua treinando
+        eng.tick(acc)
+        self.assertEqual(names(acc)[-1], "start_training")
+        acc.st.stamina = 24.5
+        eng.tick(acc)
+        self.assertEqual(names(acc)[-1], "stop_training")
+        self.assertTrue(any("stamina recuperada" in line for line in logs))
 
     def test_free_account_sells_at_threshold(self):
         acc = FakeAccount(phase="hunting", premium=False, loot=5, tracker=TROLLS)
-        eng, clock, _ = make(acc, loot={"sell_at_items": 10})
+        eng, clock, _ = make(acc, hunt="Troll Cave", loot={"sell_at_items": 10})
         eng.tick(acc)
         self.assertEqual(acc.calls[0], ("loot_settings", False))
         eng.tick(acc)
@@ -175,7 +209,7 @@ class EngineTest(unittest.TestCase):
 
     def test_premium_never_sells_by_bot(self):
         acc = FakeAccount(phase="hunting", loot=500, tracker=TROLLS)
-        eng, clock, _ = make(acc)
+        eng, clock, _ = make(acc, hunt="Troll Cave")
         for _ in range(3):
             eng.tick(acc)
         self.assertNotIn("sell_all", names(acc))
@@ -208,7 +242,7 @@ class EngineTest(unittest.TestCase):
 
     def test_house_training_is_stopped_in_hunt_mode(self):
         acc = FakeAccount(phase="house")
-        eng, clock, _ = make(acc)
+        eng, clock, _ = make(acc, hunt="Troll Cave")
         eng.tick(acc)
         eng.tick(acc)
         self.assertIn("stop_training", names(acc))
@@ -377,9 +411,9 @@ class GoalsEngineTest(unittest.TestCase):
         eng.tick(acc)
         eng.tick(acc)
         accepted = [c[1] for c in acc.calls if c[0] == "accept_task"]
-        self.assertEqual(accepted, ["Dedos de Cyclops", "Restos de Rotworm"])    # Dragon (45) > 8+12: espera
+        self.assertEqual(accepted, ["Couros de Dragão", "Dedos de Cyclops"])     # sem limite de level: a ordem manda
         eng.tick(acc)
-        self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Cyclops"))
+        self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Dragon Lair"))
 
     def test_delivers_ready_and_takes_next(self):
         acc = FakeAccount(phase="hunting", tracker=["Carrion Worm", "Rotworm"])
@@ -406,12 +440,14 @@ class GoalsEngineTest(unittest.TestCase):
         acc.st.tracker_titles = ["Rotworm: 500 de 500 kills · faltam 0.", "Carrion Worm: 10 de 250 kills · faltam 240."]
         eng.tick(acc)
         self.assertTrue(any("bestiary Rotworm completo" in line for line in logs))
+        clock.t += 21                                                # espera depois de iniciar uma caça
         eng.tick(acc)
         self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Cyclops"))
 
     def test_rule_hunt_when_no_goal(self):
         acc = FakeAccount(phase="city")
         eng, clock, logs = self.make(acc)
+        eng.cfg["hunt"] = "Troll Cave"
         for _ in range(3):
             eng.tick(acc)
         self.assertEqual(acc.calls[-1], ("start_hunt", "Troll Cave", "Normal"))

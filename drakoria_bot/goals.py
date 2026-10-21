@@ -1,6 +1,6 @@
 """Objetivos escolhidos pelo usuario (17/10/2026): tasks de produto e criaturas do bestiary, em fila.
 Prioridade da caça: task ativa -> proxima criatura do bestiary -> caça da aba Regras.
-A party pode ir ate 'level_over' levels acima do level recomendado da caça (4 personagens aguentam mais)."""
+O motor passa level_over sem limite (usuario 20/10/2026: vai na caça mais facil com a criatura, sem trava de level)."""
 import json
 import os
 import re

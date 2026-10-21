@@ -10,7 +10,9 @@ DEFAULTS = {
     "poll_seconds": 5,                    # 1 leitura (1 evaluate) a cada N segundos
     # "hunt" = mantem a party caçando | "watch" = so' vigia (relogin, avisos, loot) e nao mexe na caça/treino
     "mode": "hunt",
-    "hunt": "",                           # vazio = automatica ('Melhor escolha' do jogo pro level da party)
+    "hunt": "",                           # caça padrao (escolhida pelo usuario); vazio = sem caça padrao -> treina
+    # stamina de caça (max 42h; abaixo de 14h a XP cai pela metade): treina abaixo de train_below ate resume
+    "stamina": {"enabled": True, "train_below_hours": 14, "resume_hours": 24},
     "difficulty": "Normal",               # Insano+ pede level (250/450/700/1000)
     "loot": {
         "auto_sell": "auto",              # "auto" = liga se a conta for Premium | "on" | "off"
@@ -33,7 +35,6 @@ DEFAULTS = {
         "enabled": True,                  # confere as tasks (tambem as aceitas na mao) e segue a fila
         "tasks": [],                      # nomes das tasks de produto, na ordem
         "bestiary": [],                   # criaturas, na ordem
-        "level_over": 10,                 # ate quantos levels acima do recomendado da caça a party pode ir
         "check_minutes": 10,
         "difficulty": {},                 # task/criatura -> dificuldade (vazio = a da aba Regras)
         "bestiary_minutes": 30,           # rele os abates na Cyclopedia (o rastreador some com task ativa)

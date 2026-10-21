@@ -26,7 +26,7 @@ TEXT, MUTED, ACCENT, ACCENT_HOVER, DANGER, OK = "#e8edf2", "#8c98a4", "#e0a526",
 DARK_TEXT = "#1a1200"
 PHASES = {"hunting": "Caçando", "house": "Treinando (house)", "house_idle": "Na house", "city": "Na cidade", "login": "Deslogado",
           "error": "Erro / reconectando", "unknown": "?", "-": "-"}
-AUTO = "Automática (Melhor escolha do jogo)"
+NO_HUNT = "Nenhuma (só treinar)"
 MODES = {"hunt": "Caçar sempre", "watch": "Só vigiar (relogin, avisos, loot)"}
 DEFAULT_DIFF = "Padrão"
 PREY_MODES = {"budget": "Até X de ouro por dia", "until_found": "Até achar (sem limite diário)"}
@@ -204,7 +204,8 @@ class App:
         if st is not None:
             view = (snap["phase"], snap.get("hunt"), snap.get("target"), st.difficulty, st.gold, st.loot_items, st.xp_hour,
                     st.profit_hour, st.reserve, tuple(snap.get("prey") or []), tuple(snap.get("tasks") or []),
-                    snap.get("goal"), tuple((m.name, m.role, m.level, m.xp_pct, m.hp, m.hp_max) for m in st.members))
+                    snap.get("goal"), st.stamina and int(st.stamina * 60),
+                    tuple((m.name, m.role, m.level, m.xp_pct, m.hp, m.hp_max) for m in st.members))
             if view != self._last_view:          # so' redesenha o que mudou
                 self._last_view = view
                 phase = PHASES.get(snap["phase"], snap["phase"])
@@ -219,8 +220,9 @@ class App:
                         info.configure(text=f"{m.role}  Lv {m.level} · {m.xp_pct}%")
                         bar.set(m.hp / m.hp_max if m.hp_max else 0)
                 loot = "-" if st.loot_items is None else st.loot_items
+                stam = "-" if st.stamina is None else f"{int(st.stamina)}h{int(st.stamina % 1 * 60):02d}"
                 self.stats.configure(text=(
-                    f"Ouro {st.gold}   ·   Loot Pouch {loot}   ·   Reserva offline {st.reserve or '-'}\n"
+                    f"Ouro {st.gold}   ·   Loot Pouch {loot}   ·   Stamina {stam}   ·   Reserva offline {st.reserve or '-'}\n"
                     f"XP/h {st.xp_hour or '-'}   ·   Lucro/h {st.profit_hour or '-'}\n"
                     f"Alvo: {snap.get('target') or '-'}   ·   Auto Sell {'Premium' if st.premium else 'Free'}\n"
                     f"Prey: {' · '.join(f'{c} {b} ({t})' for c, b, t in snap.get('prey') or []) or '-'}\n"
@@ -228,6 +230,7 @@ class App:
                 self.goal_status.configure(text=f"Objetivo agora: {snap.get('goal') or 'nenhum (caça da aba Regras)'}")
         self._refresh_market()
         self._imb_render()
+        self._refresh_task_market()
         self.root.after(1000, self._poll_state)
 
     # ---------------------------------------------------------------- regras
@@ -251,7 +254,8 @@ class App:
         menu(0, list(MODES.values()), MODES.get(self.cfg["mode"], MODES["hunt"]),
              lambda v: self._set("mode", {b: a for a, b in MODES.items()}[v]))
         label(1, "Caça")
-        menu(1, [AUTO] + self.hunt_names, self.cfg["hunt"] or AUTO, lambda v: self._set("hunt", "" if v == AUTO else v))
+        menu(1, [NO_HUNT] + self.hunt_names, self.cfg["hunt"] or NO_HUNT,
+             lambda v: self._set("hunt", "" if v == NO_HUNT else v))
         label(2, "Dificuldade")
         menu(2, config.DIFFICULTIES, self.cfg["difficulty"], lambda v: self._set("difficulty", v))
         label(3, "Auto Sell")
@@ -276,11 +280,26 @@ class App:
         gold_entry.grid(row=8, column=1, sticky="w", pady=6)
         gold_entry.bind("<FocusOut>", lambda e: self._save_prey_gold())
         gold_entry.bind("<Return>", lambda e: self._save_prey_gold())
+        label(9, "Stamina")
+        stam = ctk.CTkFrame(grid, fg_color="transparent")
+        stam.grid(row=9, column=1, sticky="w", pady=6)
+        st_cfg = self.cfg["stamina"]
+        self.stam_below = tk.StringVar(value=str(st_cfg["train_below_hours"]))
+        self.stam_resume = tk.StringVar(value=str(st_cfg["resume_hours"]))
+        ctk.CTkLabel(stam, text="treinar abaixo de", text_color=TEXT).pack(side="left")
+        for var, key, suffix in ((self.stam_below, "train_below_hours", "h, voltar a caçar com"), (self.stam_resume, "resume_hours", "h")):
+            e = ctk.CTkEntry(stam, textvariable=var, width=44, fg_color=PANEL_ALT)
+            e.pack(side="left", padx=4)
+            e.bind("<FocusOut>", lambda ev, k=key, v=var: self._save_stamina(k, v))
+            e.bind("<Return>", lambda ev, k=key, v=var: self._save_stamina(k, v))
+            ctk.CTkLabel(stam, text=suffix, text_color=TEXT).pack(side="left")
         self.relogin_var = tk.BooleanVar(value=bool(self.cfg["relogin"]))
         ctk.CTkCheckBox(grid, text="Relogin automático", variable=self.relogin_var, fg_color=ACCENT, hover_color=ACCENT_HOVER,
                         text_color=TEXT, command=lambda: self._set("relogin", self.relogin_var.get())
                         ).grid(row=5, column=0, columnspan=2, sticky="w", pady=8)
-        ctk.CTkLabel(tab, text="'Proteger drops de boss' fica sempre ligado. Sem Auto Sell o bot usa 'Vender tudo agora' "
+        ctk.CTkLabel(tab, text="Destino: objetivo (task/bestiary) -> caça padrão -> treino (nunca parado). Stamina abaixo do "
+                               "limite (14h: a XP da caça cai pela metade) leva pro treino até recuperar. "
+                               "'Proteger drops de boss' fica sempre ligado. Sem Auto Sell o bot usa 'Vender tudo agora' "
                                "quando a Loot Pouch chega no número de itens. Insano+ pede level 250/450/700/1000. "
                                "Prey: escolhe a criatura da caça; senão troca a lista (grátis, depois com ouro); "
                                "nunca gasta cartas nem Drako Coins.",
@@ -289,7 +308,7 @@ class App:
     def _set(self, key, value):
         self.cfg[key] = value
         self.save()
-        self.log(f"regra: {key} = {value or 'automática'}")
+        self.log(f"regra: {key} = {value or 'nenhuma'}")
 
     def _set_loot(self, key, value):
         self.cfg["loot"][key] = value
@@ -310,6 +329,17 @@ class App:
         if value != self.cfg["prey"]["gold_per_day"]:
             self._set_prey("gold_per_day", value)
 
+    def _save_stamina(self, key, var):
+        try:
+            value = max(0, min(42, int(var.get())))
+        except ValueError:
+            var.set(str(self.cfg["stamina"][key]))
+            return
+        if value != self.cfg["stamina"][key]:
+            self.cfg["stamina"][key] = value
+            self.save()
+            self.log(f"regra: stamina.{key} = {value}h")
+
     def _save_sell(self):
         try:
             value = max(1, int(self.sell_var.get()))
@@ -322,15 +352,10 @@ class App:
     # ------------------------------------------------------------- objetivos
     def _build_goals(self, tab):
         g = self.cfg["goals"]
-        top = ctk.CTkFrame(tab, fg_color="transparent")
-        top.pack(fill="x", padx=6, pady=(6, 2))
-        ctk.CTkLabel(top, text="Até", text_color=TEXT).pack(side="left")
-        self.over_var = tk.StringVar(value=str(g["level_over"]))
-        over = ctk.CTkEntry(top, textvariable=self.over_var, width=44, fg_color=PANEL_ALT)
-        over.pack(side="left", padx=4)
-        over.bind("<FocusOut>", lambda e: self._save_over())
-        over.bind("<Return>", lambda e: self._save_over())
-        ctk.CTkLabel(top, text="levels acima do recomendado da caça", text_color=MUTED).pack(side="left")
+        ctk.CTkLabel(tab, text="Com objetivo, o bot vai pra caça mais fácil que tem a criatura. Terminou: caça padrão (aba Regras) "
+                               "ou treino. Ao lado de cada task: quanto do item dela está à venda no Market (comprando "
+                               "você também completa a task).", text_color=MUTED, wraplength=900, justify="left"
+                     ).pack(anchor="w", padx=8, pady=(6, 2))
         self.goal_status = ctk.CTkLabel(tab, text="", text_color=ACCENT, anchor="w", justify="left", wraplength=840)
         self.goal_status.pack(fill="x", padx=8)
         inner = ctk.CTkTabview(tab, fg_color=PANEL_ALT, height=330, segmented_button_selected_color=ACCENT,
@@ -346,11 +371,13 @@ class App:
         done = self.memory.get("task_rows") or {}
         chosen = set(g["tasks"])
         self.diff_menus = {}
+        self.task_checks = {}           # nome -> (checkbox, texto base, item) pra mostrar o Market
+        self._task_market_view = None
         for task in self.task_list:
             var = tk.BooleanVar(value=task["name"] in chosen)
             mark = "✓ " if done.get(task["name"]) == "done" else ("▶ " if done.get(task["name"]) == "active" else "")
             text = f"{mark}{task['name']}  ·  {task['amount']} {task['item']}  ·  Lv {task['level']}"
-            self._goal_row(box, task["name"], text, var, self._save_goal_tasks)
+            self.task_checks[task["name"]] = (self._goal_row(box, task["name"], text, var, self._save_goal_tasks), text, task["item"])
             self.task_vars[task["name"]] = var
         ctk.CTkLabel(inner.tab("Bestiary"), text="Marque as criaturas: o bot caça onde ela aparece até completar e passa pra próxima.",
                      text_color=MUTED, wraplength=840, justify="left").pack(anchor="w", padx=4)
@@ -381,10 +408,12 @@ class App:
             self._show_diff(row, key, var.get())
             on_save()
 
-        ctk.CTkCheckBox(row, text=text, variable=var, fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
-                        font=("Segoe UI", 11), command=toggled).pack(side="left")
+        cb = ctk.CTkCheckBox(row, text=text, variable=var, fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
+                             font=("Segoe UI", 11), command=toggled)
+        cb.pack(side="left")
         if var.get():
             self._show_diff(row, key, True)
+        return cb
 
     def _show_diff(self, row, key, show):
         menu = self.diff_menus.pop(key, None)
@@ -411,16 +440,19 @@ class App:
         self.save()
         self.log(f"dificuldade de {key}: {value}")
 
-    def _save_over(self):
-        try:
-            value = max(0, int(self.over_var.get()))
-        except ValueError:
-            self.over_var.set(str(self.cfg["goals"]["level_over"]))
+    def _refresh_task_market(self):
+        watcher = getattr(self.runner, "market", None) if self.runner.running else None
+        data = watcher.task_market if watcher else {}
+        view = tuple(sorted((k, v["lowest"], v["qty"]) for k, v in data.items()))
+        if view == self._task_market_view:
             return
-        if value != self.cfg["goals"]["level_over"]:
-            self.cfg["goals"]["level_over"] = value
-            self.save()
-            self.log(f"regra: objetivos até +{value} levels")
+        self._task_market_view = view
+        for name, (cb, text, item) in self.task_checks.items():
+            info = data.get(item.casefold())
+            if info and info["qty"]:
+                cb.configure(text=f"{text}   ·   Market: {info['qty']} à venda a partir de {self._gold(info['lowest'])}")
+            else:
+                cb.configure(text=text)
 
     def _save_goal_tasks(self):
         self.cfg["goals"]["tasks"] = [t["name"] for t in self.task_list if self.task_vars[t["name"]].get()]

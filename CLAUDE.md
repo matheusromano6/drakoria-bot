@@ -317,3 +317,20 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   de material dele ate pay_pct% (padrao 80) do justo, toda a quantidade barata, limitada pelo orçamento do dia
   (market.db, soma das compras do bot desde 00h - nao zera ao religar) e pela reserva. Sem justo nao compra.
   Nivel/aplicações ficam so' pra mostrar o que falta. Compra = 3 bipes subindo (winsound.Beep em thread) + aviso.
+
+## v1.8.0 - stamina, destino sem caça automatica, Market nos objetivos (20/10/2026 ~22:00, usuario)
+- Stamina (nova no jogo): painel de skills `.td-skill.resource-meter` 'Stamina 23:07:40', title: maximo 42:00, gasta 1s
+  por 1s de caça, ATE 14:00 A XP DA CAÇA CAI PELA METADE, zerada a party volta ao templo; fora da caça (templo/
+  cidade/house, jogo aberto) recupera +2h/h Free ou +3h/h Premium; jogo fechado +1h/h. House treinando mostra
+  'Treinando · skill 2,34× · Stamina +3h/h'. State.stamina em horas.
+- Ir treinar: item de menu `.training-online-menu-item` 'Treino Online' -> da cidade vai pra house JA treinando (e
+  na house parada volta a treinar). Sair da caça: `button.cp-btn.danger` 'Retornar para Thais' (sem confirmacao).
+  VALIDADO ao vivo 21:57: house -> Banuta; stamina 'baixa' (limite de teste 30h) -> Retornar -> cidade -> treino.
+- Destino (Engine.target_hunt): stamina < train_below (14h) -> treina ate resume (24h; memory stamina_resting);
+  senao objetivo (task/bestiary, caça mais facil com a criatura, SEM limite de level) -> caça padrao (Regras) ->
+  treino. Nunca parado. Caça automatica ('Melhor escolha') removida; 'até X levels acima' removido.
+- Janela de caças agora se REDESENHA o tempo todo: campo de busca e botoes 'somem' no meio do click do Playwright.
+  start_hunt todo por JS (valor + evento input na busca, card por nome, 'Caçada online', dificuldade, confirmar).
+  Depois de iniciar, 20 s de espera (o jogo demora pra mostrar a caça; antes iniciava 2x).
+- Objetivos: cada task escolhida mostra 'Market: N à venda a partir de X' (watcher.extra_items + api.search, busca
+  'search=' do Market por nome exato).

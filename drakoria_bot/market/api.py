@@ -121,6 +121,14 @@ class MarketApi:
             page += 1
         return out
 
+    def search(self, name):
+        """Item do Market pelo nome exato (busca 'search='); None se nao achar."""
+        query = name.replace(" ", "%20").replace("'", "%27")
+        for item in self._get(f"/api/v1/market/items?page=1&limit=20&search={query}").get("items") or []:
+            if (item.get("displayName") or item.get("name") or "").casefold() == name.casefold():
+                return item
+        return None
+
     def detail(self, item_id):
         """{item, sellOffers, buyOffers, statistics}"""
         return self._get(f"/api/v1/market/items/{item_id}")

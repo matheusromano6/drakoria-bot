@@ -38,6 +38,11 @@ HUNT_DIFFICULTY = ".world-hunt-difficulty-control"
 HUNT_DETAILS = "button.cp-btn[title='Detalhes das criaturas']"   # abre .creature-window.is-hunt com o NOME da caça
 HUNT_DETAILS_WINDOW = ".creature-window.is-hunt"
 
+# stamina (painel de skills): '.td-skill.resource-meter' texto 'Stamina 23:07:40', title 'Stamina da Caçada (maximo 42:00)...'
+STAMINA = ".td-skill.resource-meter"
+# ir treinar: o item de menu 'Treino Online' leva da cidade direto pra house JA treinando (validado 20/10)
+TRAIN_ONLINE = ".training-online-menu-item"
+
 # house / treino
 HOUSE_STOP = ".house-hud-btn.danger"            # "Parar" (title "Parar treino"); parado vira "Treinar" (.primary)
 HOUSE_LEAVE = "button[title='Sair da house']"    # parado na house -> Thais

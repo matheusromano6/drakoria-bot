@@ -27,6 +27,8 @@ class MarketWatcher:
         self.board = {}                    # nome_minusculo -> Evaluation (ou resumo da lista)
         self.listing = []                  # itens da(s) categoria(s): [{id, name, lowest_sell, sell_qty}]
         self.owned = {}                    # nome_minusculo -> quantidade que o usuario tem (me/assets)
+        self.extra_items = lambda: []      # nomes de itens extras (ex.: itens das tasks escolhidas) - o runner liga
+        self.task_market = {}              # nome_minusculo -> {'lowest', 'qty'} desses itens extras
         self.error = ""
         try:
             self.imb = I.load()
@@ -131,6 +133,13 @@ class MarketWatcher:
                 wallet = self._buy(api, ev, rule, wallet)
         if self.cfg.get("auto_buy"):
             self._buy_imbuements(api, wallet)
+        found = {}
+        for name in self.extra_items() or []:
+            item = api.search(name)
+            if item:
+                found[name.casefold()] = {"lowest": A._num(item.get("lowestSell")),
+                                          "qty": int(A._num(item.get("sellQuantity")) or 0)}
+        self.task_market = found
 
     def plans(self):
         """Planos dos imbuements observados (pra interface): {id: Plan}."""

@@ -19,7 +19,7 @@ READ_JS = r"""() => {
     error: /Error 10\d\d|Bad Gateway|Cloudflare|ERR_|This site can.t be reached/i.test(body.slice(0, 2000)),
     disconnected: /desconectad|conexão perdida|reconectando/i.test(body.slice(0, 4000)),
     members: [], gold: '', goldTitle: '', loot: null, backpack: '', premium: '', reserve: '', xph: '', profith: '',
-    tracker: [], kills: {}, trackerTitles: [], difficulty: '', dest: '', modals: [], training: vis(document.querySelector('.house-hud-btn.danger'))};
+    tracker: [], kills: {}, trackerTitles: [], stamina: '', difficulty: '', dest: '', modals: [], training: vis(document.querySelector('.house-hud-btn.danger'))};
   document.querySelectorAll('.td-member-main').forEach(m => {
     const lines = txt(m).split('\n').map(s => s.trim()).filter(Boolean);
     out.members.push(lines);
@@ -40,6 +40,8 @@ READ_JS = r"""() => {
     if (t.title) out.trackerTitles.push(t.title); });
   out.difficulty = txt(document.querySelector('.world-hunt-difficulty-control')).split('\n')[0] || '';
   const d = document.querySelector('.cp-dest'); out.dest = d ? (d.title || '') : '';
+  const sm = [...document.querySelectorAll('.td-skill.resource-meter')].find(e => /^\s*Stamina/.test(e.innerText || ''));
+  out.stamina = sm ? sm.innerText.replace(/\s+/g, ' ').trim() : '';
   document.querySelectorAll('.modal, .tibia-window').forEach(w => {
     if (!vis(w)) return;
     const head = txt(w.querySelector('.tibia-window-brand, header')).split('\n')[0];
@@ -127,6 +129,7 @@ class State:
     tracker: list = field(default_factory=list)     # criaturas do rastreador (identifica a caça)
     kills: dict = field(default_factory=dict)       # criatura -> abates no bestiario (qual aparece mais)
     tracker_titles: list = field(default_factory=list)  # 'Troll: 4 de 250 kills · faltam 246' (meta do bestiary)
+    stamina: float = None            # horas de stamina de caça (maximo 42); None = nao lida
     difficulty: str = ""
     dest: str = ""                   # proxima caça na cidade
     modals: list = field(default_factory=list)
@@ -163,6 +166,14 @@ def parse_gold(text):
         return None
 
 
+def parse_stamina(text):
+    """'Stamina 23:07:40' -> 23.13 (horas); None se nao achar."""
+    m = re.search(r"(\d+):(\d\d)(?::(\d\d))?", text or "")
+    if not m:
+        return None
+    return int(m.group(1)) + int(m.group(2)) / 60 + int(m.group(3) or 0) / 3600
+
+
 def parse_member(lines):
     """['MRKina', 'TANK', 'Lv 8 · 17%', '185/185', '75/75'] -> Member."""
     mem = Member(name=lines[0] if lines else "?")
@@ -182,7 +193,7 @@ def parse_state(raw):
     st = State(gold=raw.get("gold", ""), loot_items=raw.get("loot"), backpack=raw.get("backpack", ""),
                reserve=raw.get("reserve", ""), xp_hour=raw.get("xph", ""), profit_hour=raw.get("profith", ""),
                tracker=list(raw.get("tracker") or []), kills=dict(raw.get("kills") or {}),
-               tracker_titles=list(raw.get("trackerTitles") or []),
+               tracker_titles=list(raw.get("trackerTitles") or []), stamina=parse_stamina(raw.get("stamina")),
                difficulty=raw.get("difficulty", ""),
                modals=list(raw.get("modals") or []))
     st.premium = "premium" in (raw.get("premium") or "").casefold()
@@ -281,33 +292,42 @@ class Account:
     def start_hunt(self, hunt, difficulty="Normal"):
         """Escolher Hunt -> card da caça -> Caçada online -> dificuldade -> Entrar na caçada."""
         self.open_picker()
-        box = self.page.locator(S.PICKER + " " + S.PICKER_SEARCH)
-        box.click()
-        box.fill("")
-        box.press_sequentially(hunt, delay=30)        # digitar dispara o filtro (fill pode nao disparar)
-        time.sleep(0.6)
-        tile = self.page.locator(S.PICKER_TILE).filter(
-            has=self.page.locator("strong", has_text=re.compile("^" + re.escape(hunt) + "$")))
-        if tile.count() == 0:
+        # a janela se redesenha o tempo todo (20/10: campo e botoes 'somem' no meio do click do Playwright):
+        # tudo por JS no elemento do momento. Busca: valor + evento 'input' (o mesmo que digitar).
+        self.page.evaluate("""([sel, text]) => { const box = document.querySelector(sel); if (!box) return;
+            box.focus(); box.value = text; box.dispatchEvent(new Event('input', {bubbles: true}));
+            box.dispatchEvent(new Event('change', {bubbles: true})); }""", [S.PICKER + " " + S.PICKER_SEARCH, hunt])
+        pick = """([tileSel, mainSel, startSel, name]) => {
+            const tile = [...document.querySelectorAll(tileSel)].find(t => (t.querySelector('strong')?.innerText || '').trim().toLowerCase() === name.toLowerCase());
+            if (!tile) return 'sem card';
+            if (!tile.classList.contains('is-selected')) { tile.scrollIntoView({block: 'center'}); tile.querySelector(mainSel)?.click(); return 'selecionou'; }
+            const start = document.querySelector(startSel);
+            if (!start) return 'sem botao';
+            return start.disabled ? 'desabilitado' : 'pronto'; }"""
+        state = ""
+        for _ in range(12):
+            time.sleep(0.5)
+            state = self.page.evaluate(pick, [S.PICKER_TILE, S.PICKER_TILE_MAIN, S.PICKER + " " + S.PICKER_START, hunt])
+            if state in ("pronto", "desabilitado"):
+                break
+        if state != "pronto":
             self.close_windows()
-            raise RuntimeError(f"caça '{hunt}' nao encontrada na lista")
-        tile.first.scroll_into_view_if_needed()
-        tile.first.locator(S.PICKER_TILE_MAIN).evaluate("e => e.click()")
-        time.sleep(0.5)
-        start = self.page.locator(S.PICKER + " " + S.PICKER_START)
-        if start.count() == 0 or start.first.is_disabled():
-            self.close_windows()
-            raise RuntimeError(f"'Caçada online' indisponivel em {hunt}")
-        start.first.click()
-        if not self._wait(lambda: self.page.locator(S.DIFF_WINDOW).is_visible(), 6):
-            raise RuntimeError("a janela 'Prepare sua caçada' nao abriu")
-        option = self.page.locator(S.DIFF_OPTION).filter(has_text=re.compile("^\\s*" + re.escape(difficulty)))
-        if option.count() and option.first.is_enabled():
-            option.first.click()
+            raise RuntimeError(f"caça '{hunt}': {state if state != 'sem card' else 'nao encontrada na lista'}")
+        # o jogo redesenha a janela o tempo todo (o botao 'some' no meio do click do Playwright, visto 20/10):
+        # clica o elemento do momento via JS e confere se a janela de dificuldade abriu; tenta 3x
+        for _ in range(3):
+            self._js_click(S.PICKER + " " + S.PICKER_START, visible=True)
+            if self._wait(lambda: self.page.locator(S.DIFF_WINDOW).is_visible(), 3):
+                break
         else:
+            raise RuntimeError("a janela 'Prepare sua caçada' nao abriu")
+        clicked = self.page.evaluate("""([sel, name]) => {
+            const o = [...document.querySelectorAll(sel)].find(e => (e.innerText || '').trim().startsWith(name) && !e.disabled);
+            if (!o) return false; o.click(); return true; }""", [S.DIFF_OPTION, difficulty])
+        if not clicked:
             self.log(f"dificuldade '{difficulty}' indisponivel: usando a selecionada")
         time.sleep(0.3)
-        self.page.locator(S.DIFF_CONFIRM).click()
+        self._js_click(S.DIFF_CONFIRM, visible=True)
         if not self._wait(lambda: S.SCENE_HUNTING in (self.page.evaluate(
                 "s => (document.querySelector(s) || {}).className || ''", S.SCENE) or ""), 12):
             raise RuntimeError("nao entrou na caçada")
@@ -323,6 +343,23 @@ class Account:
             return head.split("\n")[0].strip()
         finally:
             self.close_windows()
+
+    def start_training(self):
+        """Cidade/house -> 'Treino Online' (vai pra house e ja treina). Na house parada, o mesmo item volta a treinar."""
+        if not self._js_click(S.TRAIN_ONLINE):
+            raise RuntimeError("item de menu 'Treino Online' nao encontrado")
+        if not self._wait(lambda: self.page.locator(S.HOUSE_STOP).first.is_visible(), 10):
+            raise RuntimeError("nao comecou a treinar")
+
+    def leave_hunt(self):
+        """Caçando -> 'Retornar para Thais' (confirma se o jogo pedir)."""
+        if not self._js_click(S.HUNT_EXIT, visible=True):
+            raise RuntimeError("botao 'Retornar para Thais' nao encontrado")
+        time.sleep(0.8)
+        self._click_text(".modal", r"^(Retornar|Confirmar|Sim|Voltar|Sair)")
+        if not self._wait(lambda: S.SCENE_HUNTING not in (self.page.evaluate(
+                "s => (document.querySelector(s) || {}).className || ''", S.SCENE) or ""), 15):
+            raise RuntimeError("nao saiu da caça")
 
     def stop_training(self):
         if not self._js_click(S.HOUSE_STOP):

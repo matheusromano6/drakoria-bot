@@ -43,6 +43,12 @@ class Runner:
     def stop(self):
         self.stop_event.set()
 
+    def _task_items(self):
+        """Itens pedidos pelas tasks escolhidas na aba Objetivos (pra mostrar se da pra comprar no Market)."""
+        from .goals import load_tasks
+        chosen = set((self.cfg.get("goals") or {}).get("tasks") or [])
+        return [t["item"] for t in load_tasks() if t["name"] in chosen]
+
     def _run(self):
         pool = Pool(self.cfg["cdp_url"], self.log)
         try:
@@ -50,6 +56,7 @@ class Runner:
             self.connected = True
             self.market = MarketWatcher(self.cfg["market"], MarketStore(os.path.join(ROOT, "market.db")), self.log,
                                         notify=lambda title, text: self.notify and self.notify(title, text))
+            self.market.extra_items = self._task_items
             self.engine = Engine(pool.refresh(), self.cfg, self.log, refresh=pool.refresh, market=self.market,
                                  credentials=Credentials(os.path.join(ROOT, "credentials.json")),
                                  memory=Memory(os.path.join(ROOT, "memory.json")))

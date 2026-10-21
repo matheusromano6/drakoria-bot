@@ -1,5 +1,8 @@
 """Motor: a cada 'poll_seconds' le a pagina (1 evaluate) e faz NO MAXIMO uma acao.
-Prioridade: erro/queda -> login -> avisos -> loot (protecao de boss / venda) -> caça."""
+Prioridade: erro/queda -> login -> avisos -> loot (protecao de boss / venda) -> tasks/bestiary -> prey -> destino.
+
+Destino (usuario 20/10/2026): stamina abaixo de 'train_below_hours' (14h: a XP cai pela metade) -> treinar ate
+'resume_hours'; senao objetivo (task ativa / bestiary) -> caça padrao da aba Regras -> treinar. Nunca parado."""
 import time
 
 import datetime
@@ -30,7 +33,7 @@ class Engine:
         self.phase_since = (None, 0)    # (fase, desde)
         self.mismatch = 0
         self.hunt_known = None          # caça atual quando o rastreador nao identifica (lida no 'Detalhes')
-        self.best = None                # (level, caça) da 'Melhor escolha' do jogo
+        self.resting = bool(memory.get("stamina_resting")) if memory else False   # treinando pra recuperar stamina
         self.prey_spent = {}            # ouro gasto trocando lista da Prey hoje (sem memory.json)
         self.snapshot = {"state": None, "hunt": None, "target": None, "phase": "-", "action": "", "prey": [], "tasks": [], "goal": ""}
 
@@ -84,7 +87,7 @@ class Engine:
     def goal_target(self, st):
         goals = self.cfg.get("goals") or {}
         return G.goal_hunt(self.active_tasks, goals.get("bestiary") or [], self.bestiary_progress(), self.tasks,
-                           self.hunts, st.level, goals.get("level_over", 10))
+                           self.hunts, st.level, 1000000)
 
     def target_difficulty(self, st):
         """Dificuldade do objetivo atual (escolhida na aba Objetivos) ou a da aba Regras."""
@@ -92,21 +95,37 @@ class Engine:
         chosen = ((self.cfg.get("goals") or {}).get("difficulty") or {}).get(key or "")
         return chosen or self.cfg["difficulty"]
 
+    def stamina_rest(self, st):
+        """True enquanto a party deve treinar pra recuperar stamina (abaixo de train_below ate chegar em resume)."""
+        cfg = self.cfg.get("stamina") or {}
+        if st.stamina is None or not cfg.get("enabled", True):
+            return self.resting
+        below, resume = cfg.get("train_below_hours", 14), cfg.get("resume_hours", 24)
+        if not self.resting and st.stamina < below:
+            self.resting = True
+            self.log(f"stamina {st.stamina:.1f}h (abaixo de {below}h): indo treinar ate {resume}h")
+        elif self.resting and st.stamina >= resume:
+            self.resting = False
+            self.log(f"stamina recuperada ({st.stamina:.1f}h): voltando a caçar")
+        if self.memory:
+            self.memory.set("stamina_resting", self.resting)
+        return self.resting
+
     def target_hunt(self, acc, st):
+        """Caça de destino ou None = treinar."""
+        if self.stamina_rest(st):
+            self.snapshot["goal"] = "recuperando stamina (treino)"
+            return None
         hunt, why, _ = self.goal_target(st)
         self.snapshot["goal"] = why
         if hunt:
             return hunt
         fixed = (self.cfg.get("hunt") or "").strip()
         if fixed:
+            self.snapshot["goal"] = "caça padrão"
             return fixed
-        if self.best is None or self.best[0] != st.level:
-            name = self._do("melhor caça", acc.best_hunt)
-            if isinstance(name, str) and name:
-                if not self.best or self.best[1] != name:
-                    self.log(f"caça automatica pro level {st.level}: {name}")
-                self.best = (st.level, name)
-        return self.best[1] if self.best else (self.memory.get("last_hunt") if self.memory else None)
+        self.snapshot["goal"] = "sem objetivo nem caça padrão: treino"
+        return None
 
     # ------------------------------------------------------------------ ciclo
     def run(self, stop):
@@ -226,8 +245,9 @@ class Engine:
         if self.cfg["mode"] != "hunt":
             return
         target = self.target_hunt(acc, st)
-        self.snapshot["target"] = target
+        self.snapshot["target"] = target or "treino"
         if not target:
+            self._go_train(acc, st)
             return
         if st.phase == "house":
             if self._do("parar treino", acc.stop_training):
@@ -256,13 +276,24 @@ class Engine:
                 if current and self.memory:
                     self.memory.set("last_hunt", current)
 
+    def _go_train(self, acc, st):
+        """Destino treino: caçando -> volta pra cidade; cidade / house parada -> Treino Online. Treinando: nada."""
+        if st.phase == "hunting":
+            if self._do("sair da caça", acc.leave_hunt):
+                self.log(f"saindo da caça pra treinar ({self.snapshot.get('goal')})")
+        elif st.phase in ("city", "house_idle"):
+            if self._do("treinar", acc.start_training):
+                self.log(f"treinando ({self.snapshot.get('goal')})")
+
     def _settled(self, st, current):
         """Ja esta na caça que o bot quer? (nao escolhe Prey pra uma caça que vai trocar em seguida)"""
         if self.cfg["mode"] != "hunt":
             return True
+        if self.resting:
+            return False
         hunt, _, _ = self.goal_target(st)
-        wanted = hunt or (self.cfg.get("hunt") or "").strip() or (self.best[1] if self.best else None)
-        return not wanted or wanted.casefold() == current.casefold()
+        wanted = hunt or (self.cfg.get("hunt") or "").strip()
+        return bool(wanted) and wanted.casefold() == current.casefold()
 
     def _spent_today(self):
         day = datetime.date.fromtimestamp(self.clock()).isoformat()
@@ -330,7 +361,7 @@ class Engine:
                     break
             active = [a for a in data["active"] if not a["ready"]]
             for name in G.next_tasks_to_accept(goals["tasks"], data["rows"], len(data["active"]), self.tasks,
-                                               self.hunts, st.level, goals.get("level_over", 10)):
+                                               self.hunts, st.level, 1000000):
                 acc.accept_task(name)
                 self.log(f"task aceita: {name}")
                 data = acc.read_tasks()
@@ -365,6 +396,7 @@ class Engine:
     def _start(self, acc, target, diff=None):
         diff = diff or self.cfg["difficulty"]
         if self._do("iniciar caça", acc.start_hunt, target, diff):
+            self.cooldown["iniciar caça"] = self.clock() + 20      # o jogo demora uns segundos pra mostrar a caça
             self.hunt_known = target
             self.log(f"caçando {target} ({diff})")
             if self.memory:
