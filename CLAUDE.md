@@ -379,3 +379,17 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   {id, name, city, minLevel, monsters}. Agora 51/51 tasks com caça (eram 34) e 309 criaturas (eram 204).
 - Bot rele isso ao iniciar (Account.read_hunt_catalog, sem janela; Engine._refresh_hunts no 1o tick no jogo) e grava
   hunts.json ao lado do .exe ({read_at, hunts}); load_hunts prefere essa copia. data/hunts.json embutido atualizado.
+
+## v1.10.0 - escolher/abrir navegador sem comando (21/10/2026, usuario: "pensar em usuarios leigos")
+- So' da pra controlar navegador aberto com --remote-debugging-port; o perfil principal de Chrome/Edge/Brave/Opera
+  nao aceita depuração. drakoria_bot/browsers.py: installed() (Chrome, Edge, Brave, Opera, Opera GX, Vivaldi pelos
+  caminhos padrao); scan() = portas 9200-9399 em LISTEN (netstat -ano) + /json/version + /json/list -> {port, name
+  (pelo PID via tasklist; opera.exe = 'Opera / Opera GX'), game_tabs, logged (titulo 'Online')}; launch(name, path)
+  = abre com porta livre (9231+) e --user-data-dir=<pasta do exe>/navegador/<nome> na pagina do jogo;
+  open_game_tab(base) = PUT /json/new?url.
+- Aba Login > Conexão: 'Conectado a', 'Procurar navegadores' (lista + 'Usar este' / 'Abrir o jogo aqui'), 'Abrir
+  navegador para o bot' (lista dos instalados + IdleDeck). config.browser {name, path}: se a porta estiver fechada ao
+  iniciar, o Runner reabre esse navegador no mesmo perfil (login/VPN salvos). Porta manual e o checkbox sairam
+  (launch_idledeck vira automatico: so' com IdleDeck).
+- Validado ao vivo: scan acha Opera GX 9223 (Drakoria logado), Chrome 9222 e IdleDeck 9230 em 0,7 s; launch Edge ->
+  porta 9231, perfil navegador/edge, aba do jogo aberta, aparece no scan (fechado depois).

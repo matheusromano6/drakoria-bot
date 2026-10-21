@@ -4,7 +4,8 @@ import os
 import threading
 
 from .engine import Engine
-from .idledeck import Pool
+from . import browsers
+from .idledeck import Pool, port_open
 from .credentials import Credentials
 from .market.store import Store as MarketStore
 from .market.watcher import MarketWatcher
@@ -52,6 +53,11 @@ class Runner:
     def _run(self):
         pool = Pool(self.cfg["cdp_url"], self.log)
         try:
+            chosen = self.cfg.get("browser") or {}
+            if chosen.get("path") and not port_open(self.cfg["cdp_url"]):
+                port = int(self.cfg["cdp_url"].rsplit(":", 1)[-1])
+                self.log(f"{chosen['name']} fechado: abrindo de novo (janela do bot)...")
+                browsers.launch(chosen["name"], chosen["path"], port=port)
             pool.open(launch=self.cfg.get("launch_idledeck", True), stop=self.stop_event)
             self.connected = True
             self.market = MarketWatcher(self.cfg["market"], MarketStore(os.path.join(ROOT, "market.db")), self.log,

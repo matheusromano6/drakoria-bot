@@ -12,7 +12,7 @@ from tkinter import ttk
 
 import customtkinter as ctk
 
-from . import VERSION, config, goals, hunts, updater
+from . import VERSION, browsers, config, goals, hunts, updater
 from .market import imbuements as imb
 from .market.store import Store as MarketStore
 from .credentials import Credentials
@@ -966,36 +966,115 @@ class App:
 
         ctk.CTkLabel(tab, text="CONEXÃO COM O JOGO", text_color=MUTED, font=("Segoe UI", 10, "bold"), anchor="w"
                      ).pack(fill="x", padx=8, pady=(14, 2))
-        conn = ctk.CTkFrame(tab, fg_color=PANEL_ALT, corner_radius=6)
-        conn.pack(fill="x", padx=8)
-        ctk.CTkLabel(conn, text="Porta de depuração", text_color=TEXT).pack(side="left", padx=(8, 4), pady=8)
-        self.port_var = tk.StringVar(value=self.cfg["cdp_url"].rsplit(":", 1)[-1])
-        port = ctk.CTkEntry(conn, textvariable=self.port_var, width=70, fg_color=BG)
-        port.pack(side="left")
-        port.bind("<FocusOut>", lambda e: self._save_port())
-        port.bind("<Return>", lambda e: self._save_port())
-        self.launch_var = tk.BooleanVar(value=bool(self.cfg.get("launch_idledeck", True)))
-        ctk.CTkCheckBox(conn, text="Abrir o IdleDeck sozinho se a porta estiver fechada", variable=self.launch_var,
-                        fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
-                        command=lambda: self._set("launch_idledeck", self.launch_var.get())).pack(side="left", padx=16)
-        ctk.CTkLabel(tab, text="IdleDeck = porta 9224. Para jogar em outro navegador (Brave/Opera, ex.: com VPN), abra-o com "
-                               "--remote-debugging-port=<porta>, informe a porta aqui e desmarque 'Abrir o IdleDeck'. "
-                               "Vale ao iniciar o bot.", text_color=MUTED, wraplength=900, justify="left"
-                     ).pack(anchor="w", padx=8, pady=4)
+        self.conn_label = ctk.CTkLabel(tab, text="", text_color=TEXT, anchor="w", font=("Segoe UI", 12, "bold"))
+        self.conn_label.pack(fill="x", padx=8)
+        self._conn_text()
 
-    def _save_port(self):
-        try:
-            port = int(self.port_var.get())
-            if not 1 <= port <= 65535:
-                raise ValueError
-        except ValueError:
-            self.port_var.set(self.cfg["cdp_url"].rsplit(":", 1)[-1])
+        find = ctk.CTkFrame(tab, fg_color=PANEL_ALT, corner_radius=6)
+        find.pack(fill="x", padx=8, pady=(6, 2))
+        btn(find, "Procurar navegadores", self._scan_browsers, primary=True, width=170).pack(side="left", padx=8, pady=8)
+        ctk.CTkLabel(find, text="mostra os navegadores abertos no modo do bot e se estão com o Drakoria",
+                     text_color=MUTED).pack(side="left", padx=4)
+        self.scan_box = ctk.CTkFrame(tab, fg_color=BG, corner_radius=6)
+        self.scan_box.pack(fill="x", padx=8, pady=2)
+
+        opener = ctk.CTkFrame(tab, fg_color=PANEL_ALT, corner_radius=6)
+        opener.pack(fill="x", padx=8, pady=(6, 2))
+        ctk.CTkLabel(opener, text="Abrir navegador para o bot:", text_color=TEXT).pack(side="left", padx=8, pady=8)
+        self.installed = browsers.installed()
+        names = [n for n, _ in self.installed] + ["IdleDeck"]
+        self.open_choice = ctk.CTkOptionMenu(opener, values=names, width=140, fg_color=BG, button_color=BORDER,
+                                             button_hover_color=ACCENT_HOVER, dropdown_fg_color=PANEL_ALT, text_color=TEXT)
+        self.open_choice.set((self.cfg.get("browser") or {}).get("name") or names[0])
+        self.open_choice.pack(side="left")
+        btn(opener, "Abrir", self._open_browser, primary=True, width=80).pack(side="left", padx=8)
+        self.conn_msg = ctk.CTkLabel(tab, text="", text_color=MUTED, anchor="w", justify="left", wraplength=900)
+        self.conn_msg.pack(fill="x", padx=8, pady=(2, 0))
+        ctk.CTkLabel(tab, text="O bot só consegue controlar um navegador aberto no 'modo do bot'. 'Abrir' faz isso por você "
+                               "numa janela própria do bot (login e VPN do Opera ficam salvos nela) e já abre o jogo. "
+                               "Se o navegador escolhido estiver fechado quando você iniciar o bot, ele reabre sozinho.",
+                     text_color=MUTED, wraplength=900, justify="left").pack(anchor="w", padx=8, pady=4)
+
+    def _conn_text(self):
+        chosen = (self.cfg.get("browser") or {}).get("name")
+        port = self.cfg["cdp_url"].rsplit(":", 1)[-1]
+        name = chosen or ("IdleDeck" if self.cfg.get("launch_idledeck", True) else "navegador")
+        self.conn_label.configure(text=f"Conectado a: {name} (porta {port})")
+
+    def _use_connection(self, url, name, browser=None):
+        """Escolhe a conexão. browser = {name, path} quando o bot sabe reabrir esse navegador sozinho."""
+        self.cfg["cdp_url"] = url
+        self.cfg["launch_idledeck"] = name == "IdleDeck"
+        self.cfg["browser"] = browser
+        self.save()
+        self._conn_text()
+        self.log(f"conexão: {name} ({url.rsplit(':', 1)[-1]})" + (" - reinicie o bot pra valer" if self.runner.running else ""))
+
+    def _scan_browsers(self):
+        self.conn_msg.configure(text="Procurando...", text_color=MUTED)
+
+        def work():
+            try:
+                found = browsers.scan()
+            except Exception as error:
+                found, err = [], str(error)
+            else:
+                err = ""
+            self.call_ui(lambda: self._show_scan(found, err))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show_scan(self, found, err):
+        for child in self.scan_box.winfo_children():
+            child.destroy()
+        if err or not found:
+            self.conn_msg.configure(text=err or "Nenhum navegador aberto no modo do bot. Use 'Abrir navegador para o bot'.",
+                                    text_color=DANGER if err else MUTED)
             return
-        url = f"http://127.0.0.1:{port}"
-        if url != self.cfg["cdp_url"]:
-            self.cfg["cdp_url"] = url
-            self.save()
-            self.log(f"conexão: porta {port} (vale ao iniciar o bot)")
+        self.conn_msg.configure(text=f"{len(found)} navegador(es) no modo do bot.", text_color=MUTED)
+        paths = dict(self.installed)
+        for b in found:
+            row = ctk.CTkFrame(self.scan_box, fg_color="transparent")
+            row.pack(fill="x", padx=6, pady=2)
+            game = ("Drakoria aberto" + (" (logado)" if b["logged"] else "")) if b["game_tabs"] else "sem a aba do Drakoria"
+            current = b["url"] == self.cfg["cdp_url"]
+            ctk.CTkLabel(row, text=f"{'● ' if current else ''}{b['name']}  ·  porta {b['port']}  ·  {game}",
+                         text_color=OK if b["game_tabs"] else MUTED, anchor="w").pack(side="left")
+            name = b["name"] if b["name"] != "Opera / Opera GX" else ("Opera GX" if "Opera GX" in paths else "Opera")
+            known = {"name": name, "path": paths[name]} if name in paths else None
+            btn(row, "Usar este", lambda u=b["url"], n=b["name"], k=known: self._use_connection(u, n, k),
+                primary=bool(b["game_tabs"]), width=90).pack(side="right", padx=4)
+            if not b["game_tabs"] and b["name"] != "IdleDeck":
+                btn(row, "Abrir o jogo aqui", lambda u=b["url"]: self._open_game_tab(u), width=130).pack(side="right")
+
+    def _open_game_tab(self, url):
+        try:
+            browsers.open_game_tab(url)
+            self.conn_msg.configure(text="Aba do Drakoria aberta: entre no jogo nela e clique em 'Usar este'.", text_color=OK)
+        except Exception as error:
+            self.conn_msg.configure(text=f"Não consegui abrir a aba: {error}", text_color=DANGER)
+        self._scan_browsers()
+
+    def _open_browser(self):
+        name = self.open_choice.get()
+        if name == "IdleDeck":
+            self._use_connection("http://127.0.0.1:9224", "IdleDeck", None)
+            self.conn_msg.configure(text="IdleDeck escolhido: o bot abre o IdleDeck no modo certo ao iniciar.", text_color=OK)
+            return
+        path = dict(self.installed).get(name)
+        self.conn_msg.configure(text=f"Abrindo {name}...", text_color=MUTED)
+
+        def work():
+            try:
+                url = browsers.launch(name, path)
+            except Exception as error:
+                self.call_ui(lambda: self.conn_msg.configure(text=f"Não consegui abrir o {name}: {error}", text_color=DANGER))
+                return
+            def done():
+                self._use_connection(url, name, {"name": name, "path": path})
+                self.conn_msg.configure(text=f"{name} aberto na página do Drakoria. Entre no jogo nessa janela (e ligue a VPN, "
+                                             f"se usar) e depois inicie o bot.", text_color=OK)
+            self.call_ui(done)
+        threading.Thread(target=work, daemon=True).start()
 
     def _refresh_logins(self):
         for child in self.login_list.winfo_children():
