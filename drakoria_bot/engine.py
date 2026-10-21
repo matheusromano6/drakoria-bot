@@ -35,6 +35,7 @@ class Engine:
         self.hunt_known = None          # caça atual quando o rastreador nao identifica (lida no 'Detalhes')
         self.resting = bool(memory.get("stamina_resting")) if memory else False   # treinando pra recuperar stamina
         self.user_busy_until = 0        # janela do usuario aberta: nada de mexer na tela ate esse horario
+        self.hunts_checked = False      # catalogo de caças relido do jogo 1x por inicio do bot
         self.prey_spent = {}            # ouro gasto trocando lista da Prey hoje (sem memory.json)
         self.snapshot = {"state": None, "hunt": None, "target": None, "phase": "-", "action": "", "prey": [], "tasks": [], "goal": ""}
 
@@ -176,6 +177,9 @@ class Engine:
         self.snapshot.update(state=st, phase=st.phase, hunt=current or (st.dest if st.phase == "city" else None))
         if self.memory and st.members:
             self.memory.set("party", [[m.name, m.role, m.level] for m in st.members])
+        if st.phase in ("hunting", "house", "house_idle", "city") and not self.hunts_checked:
+            self.hunts_checked = True
+            self._refresh_hunts(acc)
 
         # 1) erro / desconectado / travado
         if st.phase == "error":
@@ -281,6 +285,24 @@ class Engine:
                 self.mismatch = 0
                 if current and self.memory:
                     self.memory.set("last_hunt", current)
+
+    def _refresh_hunts(self, acc):
+        """Rele o catalogo de caças do jogo (sem janela) e guarda ao lado do .exe; falhou = segue com o que tem."""
+        try:
+            fresh = acc.read_hunt_catalog()
+        except Exception as error:
+            self.log(f"catálogo de caças: não consegui ler do jogo ({error}); usando a lista salva")
+            return
+        if not fresh or len(fresh) < 20:
+            return
+        fresh = sorted(fresh, key=lambda h: (h["level"], h["name"]))
+        if [h["name"] for h in fresh] != [h["name"] for h in self.hunts]:
+            self.log(f"catálogo de caças atualizado do jogo: {len(fresh)} caças (eram {len(self.hunts)})")
+        self.hunts = fresh
+        try:
+            H.save_live(fresh, datetime.datetime.now().isoformat(timespec="seconds"))
+        except OSError:
+            pass
 
     def _go_train(self, acc, st):
         """Destino treino: caçando -> volta pra cidade; cidade / house parada -> Treino Online. Treinando: nada."""

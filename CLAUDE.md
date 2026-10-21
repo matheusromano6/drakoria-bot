@@ -371,3 +371,11 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
 - config.launch_idledeck (padrao true): false = nao abre o IdleDeck se a porta estiver fechada (antes abria o
   IdleDeck na porta do Brave/Opera). Aba Login > Conexão: porta de depuração + 'Abrir o IdleDeck sozinho'.
   Config do usuario: cdp_url http://127.0.0.1:9223, launch_idledeck false.
+
+## v1.9.4 - catalogo de caças direto do jogo (21/10/2026 ~00:10)
+- A lista antiga (68, lida da janela em 16/10) estava defasada: o jogo tem 116 caças. Fonte: /data/v1-content.json
+  (6 basicas) + /data/premium-hunts-test.json (223) -> applyHuntCatalogOverrides do modulo
+  /System/Hunts/hunt-catalog-overrides.js (patches, caças novas, esconde retiradas/nao liberadas) = 116 habilitadas,
+  {id, name, city, minLevel, monsters}. Agora 51/51 tasks com caça (eram 34) e 309 criaturas (eram 204).
+- Bot rele isso ao iniciar (Account.read_hunt_catalog, sem janela; Engine._refresh_hunts no 1o tick no jogo) e grava
+  hunts.json ao lado do .exe ({read_at, hunts}); load_hunts prefere essa copia. data/hunts.json embutido atualizado.

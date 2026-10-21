@@ -66,6 +66,9 @@ class FakeAccount:
         self._call("read_bestiary")
         return dict(getattr(self, "bestiary", {}))
 
+    def read_hunt_catalog(self):
+        return []                                   # sem catalogo: o engine segue com a lista de teste
+
     def current_hunt(self):
         self._call("current_hunt")
         return getattr(self, "hunt_name", None) or "Troll Cave"

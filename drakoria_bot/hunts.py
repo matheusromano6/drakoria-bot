@@ -1,9 +1,14 @@
-"""Lista de caças e bosses (lidas ao vivo em 16/10/2026, data/*.json). O level das caças e' pensado pra 1 personagem;
-com a party de 4 da pra ir em caças mais fortes, mas a escolha automatica usa a 'Melhor escolha' do proprio jogo."""
+"""Caças e bosses. As caças vem do catalogo do PROPRIO jogo (v1-content + premium-hunts-test passados por
+applyHuntCatalogOverrides, a mesma funcao da lista 'Escolher Hunt'): relido a cada inicio do bot (hunts.json ao lado do
+.exe); data/hunts.json (embutido, 116 caças em 21/10/2026) e' a reserva. Level = minimo/recomendado do jogo."""
 import json
 import os
 
+from .paths import app_dir
+
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+# copia lida do PROPRIO jogo ao iniciar o bot (Engine): ao lado do .exe, vale mais que a embutida
+LIVE_HUNTS = os.path.join(app_dir(), "hunts.json")
 
 
 def _load(name):
@@ -12,7 +17,21 @@ def _load(name):
 
 
 def load_hunts():
+    """Caças: a copia lida do jogo (hunts.json ao lado do .exe) se existir; senao a embutida."""
+    try:
+        with open(LIVE_HUNTS, encoding="utf-8") as file:
+            data = json.load(file)
+        hunts = data.get("hunts") if isinstance(data, dict) else None
+        if hunts and len(hunts) >= 20:
+            return hunts
+    except (OSError, ValueError):
+        pass
     return _load("hunts.json")
+
+
+def save_live(hunts, read_at):
+    with open(LIVE_HUNTS, "w", encoding="utf-8") as file:
+        json.dump({"read_at": read_at, "hunts": hunts}, file, ensure_ascii=False, indent=1)
 
 
 def load_bosses():

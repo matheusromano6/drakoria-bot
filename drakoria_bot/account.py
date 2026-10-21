@@ -105,6 +105,18 @@ BESTIARY_JS = r"""async () => {
 }"""
 
 
+HUNT_CATALOG_JS = r"""async () => {
+  const app = [...document.scripts].map(s => s.src).find(s => /\/js\/app\.js/.test(s)) || '';
+  const build = (app.match(/\?build=[^&]+/) || [''])[0];
+  const ov = await import('/System/Hunts/hunt-catalog-overrides.js' + build);
+  const get = async (name) => (await fetch('/data/' + name + '.json' + build)).json();
+  const [v1, premium] = await Promise.all([get('v1-content'), get('premium-hunts-test')]);
+  return ov.applyHuntCatalogOverrides([...(v1.hunts || []), ...(premium.hunts || [])])
+    .filter(h => h.enabled !== false && !h.hiddenReason)
+    .map(h => ({id: h.id, name: h.name, level: h.minLevel, city: h.city || '', creatures: h.monsters || []}));
+}"""
+
+
 @dataclass
 class Member:
     name: str
@@ -331,6 +343,11 @@ class Account:
         if not self._wait(lambda: S.SCENE_HUNTING in (self.page.evaluate(
                 "s => (document.querySelector(s) || {}).className || ''", S.SCENE) or ""), 12):
             raise RuntimeError("nao entrou na caçada")
+
+    def read_hunt_catalog(self):
+        """Catalogo de caças do PROPRIO jogo, sem abrir janela: v1-content + premium-hunts-test passados pela funcao do
+        jogo applyHuntCatalogOverrides (a mesma da lista 'Escolher Hunt'). [{id, name, level, city, creatures}]"""
+        return self.page.evaluate(HUNT_CATALOG_JS)
 
     def current_hunt(self):
         """Nome da caça atual pela janela 'Detalhes das criaturas' (o rastreador pode estar mostrando as tasks)."""
