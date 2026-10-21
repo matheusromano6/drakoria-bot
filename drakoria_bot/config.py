@@ -6,7 +6,10 @@ import os
 DIFFICULTIES = ["Fácil", "Normal", "Difícil", "Insano", "Pesadelo", "Inferno", "Impossível"]
 
 DEFAULTS = {
-    "cdp_url": "http://127.0.0.1:9224",   # IdleDeck com depuracao remota (mesma porta dos outros bots)
+    "cdp_url": "http://127.0.0.1:9224",
+    # abre o IdleDeck com a depuracao se a porta estiver fechada; desligar quando o jogo roda em outro navegador
+    # (Brave/Opera abertos com --remote-debugging-port, ex.: Opera GX com VPN na porta 9223)
+    "launch_idledeck": True,   # IdleDeck com depuracao remota (mesma porta dos outros bots)
     "poll_seconds": 5,                    # 1 leitura (1 evaluate) a cada N segundos
     "hunt": "",                           # caça padrao (escolhida pelo usuario); vazio = sem caça padrao -> treina
     # stamina de caça (max 42h; abaixo de 14h a XP cai pela metade): treina abaixo de train_below ate resume

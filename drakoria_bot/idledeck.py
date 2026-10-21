@@ -35,10 +35,13 @@ class Pool:
     def open(self, launch=True, stop=None):
         """Conecta. Se o IdleDeck nao esta com a porta, ABRE ele (launch=True) - ver launcher.py."""
         if not port_open(self.cdp_url):
-            if not launch or not launcher.launch(self.cdp_url, lambda: port_open(self.cdp_url), self.log, stop):
+            if not launch:
+                raise RuntimeError(f"nenhum navegador com depuração em {self.cdp_url}: abra o navegador do jogo com "
+                                   f"--remote-debugging-port (ou ligue 'Abrir o IdleDeck' na aba Login)")
+            if not launcher.launch(self.cdp_url, lambda: port_open(self.cdp_url), self.log, stop):
                 raise RuntimeError(f"IdleDeck sem depuracao remota em {self.cdp_url}")
         self._pw = sync_playwright().start()
-        self.log("Conectando ao IdleDeck...")
+        self.log(f"Conectando ao navegador do jogo ({self.cdp_url.rsplit(':', 1)[-1]})...")
         try:
             # o Playwright precisa de resposta de TODAS as abas do IdleDeck; uma aba travada (de qualquer jogo)
             # segurava a conexao pra sempre sem log nenhum (visto 20/10 com as abas do Huntera)

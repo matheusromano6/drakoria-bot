@@ -964,6 +964,39 @@ class App:
         self.login_list.pack(fill="x", padx=8, pady=8)
         self._refresh_logins()
 
+        ctk.CTkLabel(tab, text="CONEXÃO COM O JOGO", text_color=MUTED, font=("Segoe UI", 10, "bold"), anchor="w"
+                     ).pack(fill="x", padx=8, pady=(14, 2))
+        conn = ctk.CTkFrame(tab, fg_color=PANEL_ALT, corner_radius=6)
+        conn.pack(fill="x", padx=8)
+        ctk.CTkLabel(conn, text="Porta de depuração", text_color=TEXT).pack(side="left", padx=(8, 4), pady=8)
+        self.port_var = tk.StringVar(value=self.cfg["cdp_url"].rsplit(":", 1)[-1])
+        port = ctk.CTkEntry(conn, textvariable=self.port_var, width=70, fg_color=BG)
+        port.pack(side="left")
+        port.bind("<FocusOut>", lambda e: self._save_port())
+        port.bind("<Return>", lambda e: self._save_port())
+        self.launch_var = tk.BooleanVar(value=bool(self.cfg.get("launch_idledeck", True)))
+        ctk.CTkCheckBox(conn, text="Abrir o IdleDeck sozinho se a porta estiver fechada", variable=self.launch_var,
+                        fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
+                        command=lambda: self._set("launch_idledeck", self.launch_var.get())).pack(side="left", padx=16)
+        ctk.CTkLabel(tab, text="IdleDeck = porta 9224. Para jogar em outro navegador (Brave/Opera, ex.: com VPN), abra-o com "
+                               "--remote-debugging-port=<porta>, informe a porta aqui e desmarque 'Abrir o IdleDeck'. "
+                               "Vale ao iniciar o bot.", text_color=MUTED, wraplength=900, justify="left"
+                     ).pack(anchor="w", padx=8, pady=4)
+
+    def _save_port(self):
+        try:
+            port = int(self.port_var.get())
+            if not 1 <= port <= 65535:
+                raise ValueError
+        except ValueError:
+            self.port_var.set(self.cfg["cdp_url"].rsplit(":", 1)[-1])
+            return
+        url = f"http://127.0.0.1:{port}"
+        if url != self.cfg["cdp_url"]:
+            self.cfg["cdp_url"] = url
+            self.save()
+            self.log(f"conexão: porta {port} (vale ao iniciar o bot)")
+
     def _refresh_logins(self):
         for child in self.login_list.winfo_children():
             child.destroy()

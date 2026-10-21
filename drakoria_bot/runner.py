@@ -52,7 +52,7 @@ class Runner:
     def _run(self):
         pool = Pool(self.cfg["cdp_url"], self.log)
         try:
-            pool.open(launch=True, stop=self.stop_event)
+            pool.open(launch=self.cfg.get("launch_idledeck", True), stop=self.stop_event)
             self.connected = True
             self.market = MarketWatcher(self.cfg["market"], MarketStore(os.path.join(ROOT, "market.db")), self.log,
                                         notify=lambda title, text: self.notify and self.notify(title, text))

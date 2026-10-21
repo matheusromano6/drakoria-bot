@@ -363,3 +363,11 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   visiveis, 'Entrar no jogo', espera o jogo VISIVEL (30 s). Validado ao vivo ate abrir o form (Claude nao digita senha).
 - 23:36: o Brave foi fechado -> porta 9230 livre -> o bot abriu o IdleDeck com --remote-debugging-port=9230 (launcher)
   e a pagina do Drakoria estava deslogada.
+
+## v1.9.3 - jogar em outro navegador (Opera GX com VPN) (20/10/2026 ~23:55)
+- Usuario precisa de VPN (ja tem outra conta logada na mesma rede; 1 conta por IP): abriu o Drakoria no Opera GX que
+  o bot do BAIAK abre com --remote-debugging-port=9223 (perfil Downloads\Telegram Desktop\v4.10.4-BaiakIdleBot\
+  opera_profile). O bot conecta nele em 0,3 s e so' mexe nas paginas do Drakoria (o Baiak usa o mesmo navegador).
+- config.launch_idledeck (padrao true): false = nao abre o IdleDeck se a porta estiver fechada (antes abria o
+  IdleDeck na porta do Brave/Opera). Aba Login > Conexão: porta de depuração + 'Abrir o IdleDeck sozinho'.
+  Config do usuario: cdp_url http://127.0.0.1:9223, launch_idledeck false.
