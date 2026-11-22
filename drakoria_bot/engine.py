@@ -328,9 +328,12 @@ class Engine:
                     self.mismatch = 0
                     if wrong_hunt:
                         self.log(f"caçando {current}, mas a escolhida e' {target}: trocando")
+                        self._start(acc, target, diff)
                     else:
+                        # so' a dificuldade: ALTERAR (topo), sem trocar a caça e sem rodar o Builder de novo
                         self.log(f"{current} em {st.difficulty}, mas a escolhida e' {diff}: trocando a dificuldade")
-                    self._start(acc, target, diff)
+                        if self._do("dificuldade", acc.change_difficulty, diff):
+                            self.log(f"dificuldade trocada para {diff}")
             else:
                 self.mismatch = 0
                 if current and self.memory:

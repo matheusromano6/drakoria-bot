@@ -361,6 +361,31 @@ class Account:
         self.page.evaluate("s => document.querySelector(s).click()", S.PICKER_BAND_ALL)
         time.sleep(0.4)
 
+    def change_difficulty(self, diff):
+        """Botao ALTERAR (topo) -> 'Ajuste sua caçada': troca SO a dificuldade, sem mexer na caça nem no Builder."""
+        dialog = "() => [...document.querySelectorAll('*')].some(e => e.children.length === 0 && (e.textContent||'').trim() === 'Ajuste sua caçada' && e.offsetParent)"
+        if not self.page.evaluate(dialog):
+            self.close_windows()
+            self.page.evaluate("() => { const b = document.querySelector('.world-hunt-difficulty-control'); if (b) b.click(); }")
+            if not self._wait(lambda: self.page.evaluate(dialog), 5):
+                raise RuntimeError("janela 'Ajuste sua caçada' nao abriu")
+        find = """(name) => { const o = [...document.querySelectorAll('button.hcd-option')].find(x => x.offsetParent &&
+            (x.innerText || '').split('\\n')[0].trim() === name); if (!o) return false; o.click(); return true; }"""
+        picked = self.page.evaluate(find, diff)
+        if not picked:   # algumas dificuldades ficam no Ato II
+            self.page.evaluate("() => { const a = [...document.querySelectorAll('button.hcd-act')].find(x => (x.innerText||'').trim() === 'Ato II'); if (a) a.click(); }")
+            time.sleep(0.5)
+            picked = self.page.evaluate(find, diff)
+        if not picked:
+            self.page.evaluate("() => { const c = [...document.querySelectorAll('button')].find(x => x.offsetParent && (x.innerText||'').trim() === 'Cancelar'); if (c) c.click(); }")
+            raise RuntimeError(f"dificuldade '{diff}' nao esta na janela")
+        time.sleep(0.4)
+        self.page.evaluate("() => { const b = document.querySelector('button.hcd-confirm'); if (b) b.click(); }")
+        current = "() => (document.querySelector('.world-hunt-difficulty-control') || {}).innerText || ''"
+        if not self._wait(lambda: diff in self.page.evaluate(current), 15):   # o jogo pode levar uns segundos pra aplicar
+            raise RuntimeError(f"dificuldade nao mudou para '{diff}'")
+        return True
+
     def best_hunt(self):
         """Nome da caça marcada pelo jogo como 'Melhor escolha' pro level da party."""
         self.open_picker()

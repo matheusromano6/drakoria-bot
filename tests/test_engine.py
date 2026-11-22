@@ -63,6 +63,11 @@ class FakeAccount:
         self.st.difficulty = difficulty
         self.st.tracker = list(next((h["creatures"] for h in HUNTS if h["name"] == hunt), []))
 
+    def change_difficulty(self, diff):
+        self._call("change_difficulty", diff)
+        self.st.difficulty = diff
+        return True
+
     def start_auto_boss(self):
         self._call("start_auto_boss")
         return getattr(self, "boss_result", ("sem bosses prontos", None))
@@ -470,7 +475,8 @@ class GoalDifficultyTest(unittest.TestCase):
         eng, clock, logs = self.make(acc, bestiary=["Rotworm"], difficulty={"Rotworm": "Fácil"})
         for _ in range(5):
             eng.tick(acc)
-        self.assertIn(("start_hunt", "Rotworms", "Fácil"), acc.calls)
+        self.assertIn(("change_difficulty", "Fácil"), acc.calls)        # so a dificuldade (ALTERAR), sem reiniciar a caça
+        self.assertNotIn(("start_hunt", "Rotworms", "Fácil"), acc.calls)
         self.assertTrue(any("trocando a dificuldade" in line for line in logs))
         n = names(acc).count("start_hunt")
         eng.tick(acc)
