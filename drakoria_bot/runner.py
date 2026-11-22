@@ -51,11 +51,20 @@ class Runner:
         return [t["item"] for t in load_tasks() if t["name"] in chosen]
 
     def _run(self):
-        pool = Pool(self.cfg["cdp_url"], self.log)
+        cdp = self.cfg["cdp_url"]
+        if not port_open(cdp):
+            # a porta configurada esta fechada: se ja existe um navegador em depuração com o jogo (ex.: Brave com
+            # outros jogos), usa ele em vez de tentar abrir o IdleDeck
+            found = [b for b in browsers.scan() if b["game_tabs"]]
+            if found:
+                cdp = found[0]["url"]
+                self.log(f"navegador em depuração com o jogo encontrado ({found[0]['name'] or 'navegador'}, "
+                         f"porta {found[0]['port']}): usando ele")
+        pool = Pool(cdp, self.log)
         try:
             chosen = self.cfg.get("browser") or {}
-            if chosen.get("path") and not port_open(self.cfg["cdp_url"]):
-                port = int(self.cfg["cdp_url"].rsplit(":", 1)[-1])
+            if chosen.get("path") and not port_open(cdp):
+                port = int(cdp.rsplit(":", 1)[-1])
                 self.log(f"{chosen['name']} fechado: abrindo de novo (janela do bot)...")
                 browsers.launch(chosen["name"], chosen["path"], port=port)
             pool.open(launch=self.cfg.get("launch_idledeck", True), stop=self.stop_event)
