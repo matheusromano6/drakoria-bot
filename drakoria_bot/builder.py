@@ -5,8 +5,21 @@ import time
 
 from . import selectors as S
 
-MEMBERS = ["MRKina", "MRPally", "MRSorc", "MRDruid"]
 TABS = ["Magias", "Curas"]
+VOCATIONS = ("Knight", "Paladin", "Sorcerer", "Druid")   # o nome do personagem vem antes da vocacao (ex.: 'UBala Kina Knight 786')
+
+
+def _members(page):
+    """Botoes dos personagens da janela Builder (o nome muda por conta: 'MRKina', 'UBala Kina', ...)."""
+    texts = page.evaluate(r"""() => [...document.querySelectorAll('button.tibia-button')].filter(b => b.offsetParent)
+        .map(b => (b.innerText || '').trim().replace(/\s+/g, ' '))""")
+    return [t for t in texts if any(v in t.split() for v in VOCATIONS)]
+
+
+def _member_name(text):
+    words = text.split()
+    cut = next(i for i, w in enumerate(words) if w in VOCATIONS)
+    return " ".join(words[:cut])
 
 
 def _pick_hunt(page, hunt, wait=6):
@@ -75,10 +88,11 @@ def apply_for_hunt(page, hunt, log=print):
     result = {}
     _pick_hunt(page, hunt)
     _open(page)
-    for member in MEMBERS:
+    for button_text in _members(page):
+        member = _member_name(button_text)
         result[member] = {}
         # os botoes dos personagens da janela Builder sao 'tibia-button small' (o do equipamento da tela e' outro)
-        _click_visible(page.locator("button.tibia-button", has_text=member), f"personagem {member}")
+        _click_visible(page.locator("button.tibia-button", has_text=button_text), f"personagem {member}")
         time.sleep(0.8)
         for tab in TABS:
             _click_visible(page.locator("button", has_text=tab), f"aba {tab} de {member}")
