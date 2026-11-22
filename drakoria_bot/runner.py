@@ -52,14 +52,15 @@ class Runner:
 
     def _run(self):
         cdp = self.cfg["cdp_url"]
-        if not port_open(cdp):
-            # a porta configurada esta fechada: se ja existe um navegador em depuração com o jogo (ex.: Brave com
-            # outros jogos), usa ele em vez de tentar abrir o IdleDeck
-            found = [b for b in browsers.scan() if b["game_tabs"]]
-            if found:
-                cdp = found[0]["url"]
-                self.log(f"navegador em depuração com o jogo encontrado ({found[0]['name'] or 'navegador'}, "
-                         f"porta {found[0]['port']}): usando ele")
+        # o navegador configurado precisa ter a aba do jogo. Se a porta esta fechada OU aberta sem nenhuma aba do
+        # Drakoria (ex.: outro navegador/jogo nessa porta), usa um navegador em depuração que TENHA o jogo aberto
+        # (ex.: Brave com outros jogos) em vez de ficar esperando abrir o IdleDeck.
+        port = int(cdp.rsplit(":", 1)[-1])
+        found = [b for b in browsers.scan() if b["game_tabs"]]
+        if found and not any(b["port"] == port for b in found):
+            cdp = found[0]["url"]
+            self.log(f"navegador em depuração com o jogo encontrado ({found[0]['name'] or 'navegador'}, "
+                     f"porta {found[0]['port']}): usando ele")
         pool = Pool(cdp, self.log)
         try:
             chosen = self.cfg.get("browser") or {}

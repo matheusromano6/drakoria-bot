@@ -409,6 +409,7 @@ class Engine:
             if swapped:
                 slots = acc.read_prey()
             for slot in slots:
+                rerolls = 0   # limite de trocas vale POR espaco (antes o espaco 1 gastava o limite do espaco 2)
                 while slot["state"] == "selection":
                     _, spent = self._spent_today()
                     action = P.decide(slot, wanted, cfg, spent, gold)
@@ -416,7 +417,10 @@ class Engine:
                         break
                     kind, value = action
                     if kind == "reroll":
-                        if rerolls >= cfg.get("max_rerolls_per_check", 10):
+                        # 'ate achar': troca ate achar a criatura da caça (so' a reserva de ouro e um teto de seguranca
+                        # de 200 trocas); outros modos: limite por checagem
+                        limit = 200 if cfg.get("mode") == "until_found" else cfg.get("max_rerolls_per_check", 10)
+                        if rerolls >= limit:
                             break  # limite de trocas nesta checagem: tenta de novo depois
                         acc.prey_reroll(slot["index"], value)
                         rerolls += 1

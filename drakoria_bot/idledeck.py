@@ -76,7 +76,10 @@ class Pool:
             self.log(f"paginas do Drakoria: {len(known)} (novas {len(new)}, fechadas {len(gone)})")
         if not known and not self._warned_empty:
             self._warned_empty = True
-            self.log("Aguardando as contas do Drakoria abrirem no IdleDeck...")
+            # diagnostico: mostra as paginas que o bot ENXERGA neste navegador (so o host, sem dados pessoais)
+            seen = sorted({p.url.split("/")[2] for c in self.browser.contexts for p in c.pages if "://" in p.url})
+            self.log(f"Aguardando as contas do Drakoria abrirem no IdleDeck (porta {self.cdp_url.rsplit(':', 1)[-1]}; "
+                     f"paginas visiveis: {', '.join(seen[:8]) or 'nenhuma'})...")
         elif known:
             self._warned_empty = False
         # nomes ficam so' depois da 1a leitura
