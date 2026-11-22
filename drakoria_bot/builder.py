@@ -9,25 +9,32 @@ TABS = ["Magias", "Curas"]
 
 def _pick_hunt(page, hunt):
     # JS direto no card: a grade se redesenha e o clique do Playwright fica bloqueado (igual account.start_hunt)
-    page.evaluate("""(name) => { const t = [...document.querySelectorAll('.hw-root .hw-tile')].find(x =>
+    found = page.evaluate("""(name) => { const t = [...document.querySelectorAll('.hw-root .hw-tile')].find(x =>
         (x.querySelector('strong')?.innerText || '').trim().toLowerCase() === name.toLowerCase());
-        if (t) { t.scrollIntoView({block: 'center'}); t.querySelector('.hw-tile-main')?.click(); } }""", hunt)
+        if (!t) return false; t.scrollIntoView({block: 'center'}); t.querySelector('.hw-tile-main')?.click(); return true; }""", hunt)
+    if not found:
+        raise RuntimeError(f"caça '{hunt}' não está no Builder")
     time.sleep(1.0)
 
 
 def _open(page):
-    page.locator(".hw-root .hw-detail [data-action=build-advisor-open]").first.click()
+    _click_visible(page.locator(".hw-root .hw-detail [data-action=build-advisor-open]"), "abrir o Builder da caça")
     time.sleep(1.2)
 
 
-def _click_visible(locator):
-    # o mesmo texto aparece em botoes escondidos (ex.: equipamento): clica no primeiro que esta visivel
-    for i in range(locator.count()):
-        item = locator.nth(i)
-        if item.is_visible():
-            item.click()
-            return
-    raise RuntimeError("nenhum botao visivel")
+def _click_visible(locator, what, wait=6):
+    # o mesmo texto aparece em botoes escondidos (ex.: equipamento): clica no primeiro que esta visivel.
+    # espera a janela se redesenhar (o detalhe da caça demora pra aparecer depois de selecionar)
+    end = time.time() + wait
+    while True:
+        for i in range(locator.count()):
+            item = locator.nth(i)
+            if item.is_visible():
+                item.click()
+                return
+        if time.time() > end:
+            raise RuntimeError(f"{what}: nenhum botão visível")
+        time.sleep(0.4)
 
 
 def apply_for_hunt(page, hunt, log=print):
@@ -37,15 +44,17 @@ def apply_for_hunt(page, hunt, log=print):
     _open(page)
     for member in MEMBERS:
         result[member] = {}
-        _click_visible(page.locator(".tibia-window-body button", has_text=member))
+        _click_visible(page.locator(".tibia-window-body button", has_text=member), f"personagem {member}")
         time.sleep(0.8)
         for tab in TABS:
-            _click_visible(page.locator("button", has_text=tab))
+            _click_visible(page.locator("button", has_text=tab), f"aba {tab} de {member}")
             time.sleep(0.8)
-            btn = page.locator("button", has_text="Aplicar no Helper").first
-            if btn.count() == 0:
+            btn = page.locator("button", has_text="Aplicar no Helper")
+            visible = [btn.nth(i) for i in range(btn.count()) if btn.nth(i).is_visible()]
+            if not visible:
                 state = "sem botao"
-            elif btn.is_enabled():
+            elif visible[0].is_enabled():
+                btn = visible[0]
                 btn.click()
                 time.sleep(1.5)
                 state = "aplicado"
