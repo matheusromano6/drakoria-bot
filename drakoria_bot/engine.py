@@ -263,6 +263,17 @@ class Engine:
                 self.log(f"Loot Pouch com {st.loot_items} itens: vendido tudo (ouro {st.gold})")
             return
 
+        # 4b) builder: caçando a caça escolhida, confere de tempos em tempos se o combo ainda e' o melhor
+        bcfg = self.cfg.get("builder") or {}
+        fixed = (self.cfg.get("hunt") or "").strip()
+        if bcfg.get("enabled", True) and st.phase == "hunting" and current and fixed \
+                and current.casefold() == fixed.casefold():
+            every = bcfg.get("check_minutes", 10) * 60
+            if now - self.last_ok.get("builder check", -every) >= every and self._ready("builder"):
+                if self._do("builder", lambda: self._apply_builder(acc, current)) is not None:
+                    self.last_ok["builder check"] = now
+                    return
+
         # 5) imbuements (acima de tasks/bestiary): aplica o que acabou, compra/escolhe caça pros materiais
         imb = self.cfg.get("imbuing") or {}
         if imb.get("enabled", True) and (imb.get("targets") or not self.imb_seen) and st.phase in ("hunting", "city", "house", "house_idle"):
@@ -666,7 +677,10 @@ class Engine:
     def _apply_builder(self, acc, target):
         from . import builder
         acc.open_picker()
-        builder.apply_for_hunt(acc.page, target, self.log)
+        try:
+            builder.apply_for_hunt(acc.page, target, self.log)
+        finally:
+            acc.close_windows()
 
     def _start(self, acc, target, diff=None):
         diff = diff or self.cfg["difficulty"]

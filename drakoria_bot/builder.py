@@ -37,6 +37,27 @@ def _click_visible(locator, what, wait=6):
         time.sleep(0.4)
 
 
+def _visible_apply(page):
+    btn = page.locator("button", has_text="Aplicar no Helper")
+    visible = [btn.nth(i) for i in range(btn.count()) if btn.nth(i).is_visible()]
+    return visible[0] if visible else None
+
+
+def _apply_once(page):
+    """'Aplicar no Helper' habilitado = o combo ainda nao e' o melhor: clica e CONFERE que ficou desabilitado
+    (desabilitado de cara = ja esta o melhor). Tenta de novo 1x se o jogo nao aceitou."""
+    for attempt in range(2):
+        btn = _visible_apply(page)
+        if btn is None:
+            return "sem botao"
+        if not btn.is_enabled():
+            return "ja estava" if attempt == 0 else "aplicado"
+        btn.click()
+        time.sleep(1.5)
+    btn = _visible_apply(page)
+    return "nao aplicou" if btn is not None and btn.is_enabled() else "aplicado"
+
+
 def apply_for_hunt(page, hunt, log=print):
     """Aplica o combo sugerido de magias e curas em cada personagem. Retorna {personagem: {aba: estado}}."""
     result = {}
@@ -49,17 +70,7 @@ def apply_for_hunt(page, hunt, log=print):
         for tab in TABS:
             _click_visible(page.locator("button", has_text=tab), f"aba {tab} de {member}")
             time.sleep(0.8)
-            btn = page.locator("button", has_text="Aplicar no Helper")
-            visible = [btn.nth(i) for i in range(btn.count()) if btn.nth(i).is_visible()]
-            if not visible:
-                state = "sem botao"
-            elif visible[0].is_enabled():
-                btn = visible[0]
-                btn.click()
-                time.sleep(1.5)
-                state = "aplicado"
-            else:
-                state = "ja estava"
+            state = _apply_once(page)
             result[member][tab] = state
             log(f"{member} {tab}: {state}")
     return result
