@@ -1,6 +1,7 @@
 """Conexao com o IdleDeck (que precisa estar aberto com a depuracao remota).
 Cada conta do Drakoria e' uma pagina 'drakoria.com.br' na mesma conexao; paginas
 de OUTROS jogos nunca sao tocadas."""
+import time
 import urllib.request
 
 from playwright.sync_api import sync_playwright
@@ -11,6 +12,7 @@ from .account import Account
 from .selectors import GAME_HOST
 
 CONNECT_TIMEOUT_MS = 45000
+RECONNECT_AFTER_S = 60      # sem nenhuma conta do Drakoria por esse tempo: reconecta
 
 
 def port_open(cdp_url, timeout=2):
@@ -31,6 +33,7 @@ class Pool:
         self.browser = None
         self._accounts = {}      # id(page) -> Account
         self._warned_empty = False
+        self._empty_since = None
 
     def open(self, launch=True, stop=None):
         """Conecta. Se o IdleDeck nao esta com a porta, ABRE ele (launch=True) - ver launcher.py."""
@@ -61,6 +64,23 @@ class Pool:
             self._pw = None
             self.browser = None
 
+    def _reconnect(self):
+        from . import browsers
+        try:
+            best = [b for b in browsers.scan() if b["game_tabs"]]
+        except Exception:
+            best = []
+        target = best[0]["url"] if best else self.cdp_url
+        self.log(f"reconectando: navegador com o Drakoria em {target.rsplit(':', 1)[-1]}"
+                 + ("" if best else " (nenhum achado; tentando a porta configurada)"))
+        self.close()
+        self.cdp_url = target
+        self._accounts = {}
+        try:
+            self.open(launch=False)
+        except Exception as error:
+            self.log(f"reconexao falhou: {error}")
+
     def refresh(self):
         """Reencontra as paginas do Drakoria (conta aberta/fechada depois do inicio)."""
         pages = [p for c in self.browser.contexts for p in c.pages if GAME_HOST in p.url]
@@ -74,6 +94,16 @@ class Pool:
         self._accounts = known
         if gone or new:
             self.log(f"paginas do Drakoria: {len(known)} (novas {len(new)}, fechadas {len(gone)})")
+        if known:
+            self._empty_since = None
+        elif self._empty_since is None:
+            self._empty_since = time.time()
+        elif time.time() - self._empty_since > RECONNECT_AFTER_S:
+            # sem nenhuma conta ha' muito tempo: a conexao pode estar presa num navegador sem o jogo (ex.: porta
+            # errada ou conexao velha). Reconecta procurando o navegador em depuração que TEM o jogo aberto.
+            self._empty_since = time.time()
+            self._reconnect()
+            return self.refresh()
         if not known and not self._warned_empty:
             self._warned_empty = True
             # diagnostico: mostra as paginas que o bot ENXERGA neste navegador (so o host, sem dados pessoais)

@@ -101,3 +101,52 @@ def apply_for_hunt(page, hunt, log=print):
             result[member][tab] = state
             log(f"{member} {tab}: {state}")
     return result
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Builder pelo MOTOR DO JOGO (sem abrir janela, roda em segundo plano, como o Atlas e a Roda do Destino).
+# O botao 'Aplicar no Helper' do jogo so chama currentGame.applyBuildAdvisorCombo(huntId, memberId) e
+# applyBuildAdvisorHeal(huntId, memberId); 'ja esta o melhor' = buildAdvisorComboFor(...).same / buildAdvisorHealFor(...).same.
+# mode 'check' so le; mode 'apply' grava no Helper o que estiver diferente do melhor.
+GAME_BUILD_JS = r"""async ([huntName, mode]) => {
+  const g = window.__drkMarket && window.__drkMarket.game;
+  if (!g || !g.data) return {error: 'motor do jogo indisponivel'};
+  const want = String(huntName || '').trim().toLowerCase();
+  const hunt = (g.data.hunts || []).find(h => String(h.name || h.title || '').trim().toLowerCase() === want);
+  if (!hunt) return {error: 'caça não encontrada no jogo: ' + huntName};
+  const creatures = g.huntBuildCreatures(hunt.id).creatures;
+  const members = (g.partyMembers ? g.partyMembers() : [g.char]).filter(Boolean);
+  const rows = [];
+  for (const m of members) {
+    const row = {name: m.name, id: m.id, magias: '', curas: ''};
+    try {
+      if (g.buildAdvisorComboFor(m, creatures).same) row.magias = 'ja estava';
+      else if (mode === 'apply') { const r = g.applyBuildAdvisorCombo(hunt.id, m.id); row.magias = r && r.ok ? 'aplicado' : 'nao aplicou: ' + (r && r.msg); }
+      else row.magias = 'diferente';
+    } catch (e) { row.magias = 'erro: ' + e.message; }
+    try {
+      if (g.buildAdvisorHealFor(m).same) row.curas = 'ja estava';
+      else if (mode === 'apply') { const r = g.applyBuildAdvisorHeal(hunt.id, m.id); row.curas = r && r.ok ? 'aplicado' : 'nao aplicou: ' + (r && r.msg); }
+      else row.curas = 'diferente';
+    } catch (e) { row.curas = 'erro: ' + e.message; }
+    rows.push(row);
+  }
+  return {hunt: hunt.name || hunt.title, rows};
+}"""
+
+
+def apply_by_game(page, hunt, log=print, mode="apply"):
+    """Builder pelo motor do jogo. Devolve {personagem: {'Magias': estado, 'Curas': estado}}."""
+    from .market.api import HOOK_JS
+    status = page.evaluate(HOOK_JS)          # captura o motor do jogo (1x por carga da pagina, sem janela)
+    if status != "ok":
+        raise RuntimeError(f"motor do jogo indisponivel: {status}")
+    data = page.evaluate(GAME_BUILD_JS, [hunt, mode])
+    if data.get("error"):
+        raise RuntimeError(data["error"])
+    result = {}
+    for row in data["rows"]:
+        result[row["name"]] = {"Magias": row["magias"], "Curas": row["curas"]}
+        log(f"{row['name']} Magias: {row['magias']}")
+        log(f"{row['name']} Curas: {row['curas']}")
+    return result

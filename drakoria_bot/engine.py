@@ -683,6 +683,12 @@ class Engine:
 
     def _apply_builder(self, acc, target):
         from . import builder
+        # 1o: pelo motor do jogo (sem janela, em segundo plano). Se nao der, usa a janela do Builder.
+        try:
+            builder.apply_by_game(acc.page, target, self.log, mode="apply")
+            return
+        except Exception as error:
+            self.log(f"builder pelo motor do jogo falhou ({error}): usando a janela do Builder")
         acc.open_picker()
         try:
             builder.apply_for_hunt(acc.page, target, self.log)
