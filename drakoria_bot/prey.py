@@ -67,4 +67,5 @@ def decide(slot, wanted, cfg, spent_today, gold_now=None):
                 return ("reroll", price)
         elif spent_today + price <= cfg.get("gold_per_day", 0) and affordable:
             return ("reroll", price)
-    return ("any", options[0])
+    # nenhuma criatura da caça e sem troca: espera (nunca escolhe criatura de fora da caça)
+    return None

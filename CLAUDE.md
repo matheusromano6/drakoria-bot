@@ -430,3 +430,38 @@ SEPARADO: nao misturar com `matheusromano6/otxidle-bot` nem `matheusromano6/hunt
   > max(10, 3 dias de negocio) -> nao compra (loga 1x/h); (4) referencia = min(justo, mediana das leituras do PROPRIO bot
   nas ultimas 24h, se cobrirem >= 1h). Regra de item sem preço maximo usa 80% da referencia. Imbuements 'Automático' idem.
 - Conferido ao vivo: Grimeleech bloqueado (413 a venda abaixo de 70%, ~24/dia); silencer/rope belt/teeth seguem normais.
+
+## Arvore Soul - mapa (08/11/2026, so leitura)
+- Janela: menu Personagem -> `button.main-menu-character-shortcut` "Árvore Soul" (System/Soul Tree/soul-tree-ui.js).
+- Motor (window.__drkMarket.game): soulTreeDefinition(member) -> {vocation, title, branches[3]: {id, title, subtitle,
+  nodes[12]: {id, name, maxRank 10, requires [{id, rank 5}], effects {stat: valor por rank}}}}; soulTreeSummary(member) ->
+  {earned (~level-8), spent, available, paidPoints, freePoints, goldInvested, resetCost}; soulTreeNodeStatus(member, id) ->
+  {rank, maxed, unlocked, cost {soul, gold}}; member.soulTree.nodes {id: rank}.
+- Planejar e aplicar: previewSoulTreePlan(memberId, {nodeId: rankAlvo}) (so calcula), applySoulTreePlan(memberId, draft)
+  (gasta), resetSoulTree (custa gold pelo level; pontos pagos voltam como 'grátis').
+- Regras: 1 Soul Point por level. Proximo rank R custa 2R soul + 2R milhoes de gold (rank 1 = 2 + 2M ... rank 10 = 20 + 20M).
+  Cada no exige o anterior do mesmo caminho no rank 5. 3 caminhos: 2 da vocação + 'Legado da Party' (XP, loot, gold, dano).
+- Estado 08/11: Kina 701 (9 livres; Bastião quase cheio, Colosso vazio), Pally 698 (10), Sorc 700 (8), Druid 700 (6).
+
+## Roda: gemas e Forja Ancestral (08-10/11/2026, ao vivo)
+- Gemas: cliente do proprio jogo createWheelGemsClient (System/Wheel of Destiny/wheel-gems-client.js, import pela URL de
+  wheel-controller.js) com getAccount = window.__drkMarket.client e getGame = __drkMarket.game; run(action, {memberId, ...}):
+  reveal {quality}, rotate {gemId} (ordem: verde->vermelho->roxo->azul->verde; CONFERIR a cor antes de cada giro), socket,
+  unsocket {domain}, lock {gemId, locked}, crush {item, qty}, dismantle {gemIds}, grade {modId}. 1 acao a cada ~4s (seguidas
+  dao NETWORK_ERROR). Avaliar gema: wheel-gems-rules.js wheelGemEffects. Gema fechada fica na mochila OU no depot.
+  CUIDADO (14/11, 2a vez): durante um script o wheelSummary(member) NAO atualiza -> girar ate 'a cor ser X' da a volta
+  inteira (4M perdidos). Girar contando pela resposta (r.result.to) ou pelo log state.wheelGems.ops. Gema travada: lock
+  {locked:false} antes de girar (WHEEL_GEMS_LOCKED_GEM). Vasos: WHEEL_VESSEL_SLICES (wheel-config.js); validar a
+  distribuicao com wheel-rules.js wheelBrokenSlices(slices) antes do applyWheel. Edicao so na house/training-online.
+- Forja Ancestral: createWeaponMasteryClient (System/Weapon Mastery/weapon-mastery-client.js); run(action, {memberId, piece,
+  itemId, ...}): unlock, reroll {locks:[indices], spheres:{indice: 'rare'|'legendary'...}} -> pending -> choose {choice:
+  accept|keep}, polish {slot}, transfer. Registro: state.weaponMastery.members[id].items[itemId]. So na cidade/house.
+
+## Atlas Celestial (substituiu a Arvore Soul, 12/11/2026)
+- Mesmas funcoes do motor (soulTreeDefinition/Summary/previewSoulTreePlan/applySoulTreePlan), versao 4: 176 nos em 3 setores
+  (assalto, bastiao, party=Legado) de 4 caminhos cada; nos com id 'setor:caminho:anel' (2,3 pequenos; 4 medio; 5a/5b losango,
+  so 1 do par; 6 pequeno; 7 medio + 7s1/7s2; 8 final), preenchimentos 'setor:fN:..', 'setor:cap' (apice), pontes 'ponte:...'.
+- Custo FIXO por nivel: pequeno 2 (ate 10), medio 6 (ate 5), losango 16, ponte 12, final 40, apice 60. Um no so libera os
+  vizinhos no nivel 5 (ou no maximo). Rascunho = {id: nivel} incluindo 'setor:portal': 1 (o 'core' NAO entra). Efeitos x2.
+- A migracao zerou tudo (pontos voltaram gratis). Build aplicada 12/11: Legado caminhos 0 (XP, Ressonancia) e 2 (dano, Varredura)
+  nos 4; Kina bastiao 1,3,0; Pally assalto 0 + bastiao 3,1; Sorc assalto 1,2 + bastiao 1; Druid bastiao 0,3,1. Script atlas.py.

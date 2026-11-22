@@ -26,6 +26,8 @@ READ_JS = r"""() => {
   });
   const g = document.querySelector('.topbar-gold-balance');
   out.gold = txt(g); out.goldTitle = g ? (g.title || g.getAttribute('aria-label') || '') : '';
+  const gm = window.__drkMarket && window.__drkMarket.game;
+  out.name = gm && gm.char ? (gm.char.name || '') : '';
   document.querySelectorAll('.td-title, header').forEach(h => {
     const t = txt(h).split('\n').map(s => s.trim());
     if (t[0] === 'Loot Pouch' && out.loot === null && /^\d+$/.test(t[1] || '')) out.loot = +t[1];
@@ -70,6 +72,14 @@ PREY_JS = r"""([slotSel, creatureSel, toolSel]) => {
   return out;
 }"""
 
+
+BOSS_TEXT_JS = r"""() => {
+  const go = document.querySelector('button.bs-go');
+  if (!go) return '';
+  let root = go;
+  for (let i = 0; i < 6 && root.parentElement; i++) { root = root.parentElement; if (root.innerText.length > 400) break; }
+  return root.innerText;
+}"""
 
 TASKS_JS = r"""() => {
   const lines = e => (e.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
@@ -187,6 +197,7 @@ class Member:
 @dataclass
 class State:
     phase: str = "unknown"           # hunting | house (treinando) | house_idle | city | login | error | unknown
+    name: str = ""                   # nome do personagem desta conta
     members: list = field(default_factory=list)
     gold: str = ""
     loot_items: int = None
@@ -266,6 +277,7 @@ def parse_state(raw):
                difficulty=raw.get("difficulty", ""),
                modals=list(raw.get("modals") or []))
     st.premium = "premium" in (raw.get("premium") or "").casefold()
+    st.name = raw.get("name") or ""
     dest = re.match(r"Próximo destino:\s*([^·]+)", raw.get("dest") or "")
     st.dest = dest.group(1).strip() if dest else ""
     st.members = [parse_member(lines) for lines in raw.get("members") or [] if lines]
@@ -488,6 +500,11 @@ class Account:
     def _checkbox(self, label):
         return self.page.locator(S.LOOT_WINDOW + " label", has_text=label).locator("input[type=checkbox]").first
 
+    @staticmethod
+    def _toggle(box):
+        # clique via JS: um <i> do Mantine cobre o checkbox e o click() normal estoura timeout
+        box.evaluate("el => el.click()")
+
     def loot_settings(self, auto_sell):
         """Garante 'Proteger drops de boss' LIGADO e Auto Sell como pedido (None = nao mexe). Devolve o que mudou."""
         self._open_loot()
@@ -495,12 +512,12 @@ class Account:
         try:
             protect = self._checkbox(S.LOOT_PROTECT_LABEL)
             if not protect.is_checked():
-                protect.click()
+                self._toggle(protect)
                 changed.append("Proteger drops de boss ligado")
             if auto_sell is not None:
                 box = self._checkbox(S.LOOT_AUTOSELL_LABEL)
                 if box.is_checked() != auto_sell:
-                    box.click()
+                    self._toggle(box)
                     changed.append("Auto Sell " + ("ligado" if auto_sell else "desligado"))
             return changed
         finally:
@@ -512,7 +529,7 @@ class Account:
         try:
             protect = self._checkbox(S.LOOT_PROTECT_LABEL)
             if not protect.is_checked():          # nunca vender sem a protecao de boss
-                protect.click()
+                self._toggle(protect)
                 time.sleep(0.3)
             button = self.page.locator(S.LOOT_SELL_ALL)
             if button.is_disabled():
@@ -528,7 +545,9 @@ class Account:
     # ------------------------------------------------------------ tasks de produto
     def _open_tasks(self):
         self.close_windows()
-        self.page.evaluate("s => document.querySelector(s).click()", S.TASKS_OPEN)
+        clicked = self.page.evaluate("s => { const e = document.querySelector(s); if (!e) return false; e.click(); return true; }", S.TASKS_OPEN)
+        if not clicked:
+            raise RuntimeError("botao de Tasks nao existe mais no jogo (seletor " + S.TASKS_OPEN + ")")
         if not self._wait(lambda: self.page.locator(S.TASKS_LIST).first.is_visible(), 6):
             raise RuntimeError("a janela de Tasks nao abriu")
         time.sleep(0.3)
@@ -641,6 +660,49 @@ class Account:
             self.page.locator(S.PREY_ASK_PAY).first.click()
         if not self._wait(lambda: slot.locator(S.PREY_CREATURE).evaluate_all(names) != before, 6):
             raise RuntimeError("a lista da Prey nao mudou")
+
+    # ------------------------------------------------------------ auto boss
+    def _bosses_open(self):
+        return self.page.locator("button.bs-go").first.is_visible() if self.page.locator("button.bs-go").count() else False
+
+    def _open_bosses_window(self):
+        if not self._bosses_open():
+            self.close_windows()
+            self.page.evaluate("""() => { const b = [...document.querySelectorAll('button')].find(x => x.offsetParent
+                && x.innerText.trim() === 'Menu'); if (b) b.click(); }""")
+            if not self._wait(lambda: self.page.get_by_text("Chefes e Auto Boss").first.is_visible(), 5):
+                raise RuntimeError("menu Central Drakoria nao abriu")
+            self.page.get_by_text("Chefes e Auto Boss").first.click()
+            if not self._wait(self._bosses_open, 6):
+                raise RuntimeError("janela Bosses nao abriu")
+
+    def _boss_rows(self):
+        """[(boss, status)] da janela Bosses ('Em cooldown' = ja feito/indisponivel; o resto = na fila/pronto)."""
+        text = self.page.evaluate(BOSS_TEXT_JS) or ""
+        return re.findall(r"^\d+\n([^\n]+)\n([^\n]+)\n×", text, re.M)
+
+    def start_auto_boss(self):
+        """Menu > Aventura > Bosses > 'Iniciar Auto Boss'. Devolve (status, ultimo_boss): status 'iniciado' ou
+        'sem bosses prontos' (todos em cooldown); ultimo_boss = o ultimo da fila (acompanhado pra saber quando termina).
+        O jogo devolve a Party pra caça sozinho quando a fila termina."""
+        self._open_bosses_window()
+        ready = [name for name, status in self._boss_rows() if "cooldown" not in status.lower()]
+        go = self.page.locator("button.bs-go").first
+        if go.is_disabled():
+            result = "sem bosses prontos"
+        else:
+            go.click()
+            time.sleep(1.0)
+            result = "iniciado"
+        self.close_windows()
+        return result, (ready[-1] if result == "iniciado" and ready else None)
+
+    def boss_pending(self, boss):
+        """True enquanto o boss ainda esta pronto/na fila (nao foi feito). False = o ultimo da fila terminou."""
+        self._open_bosses_window()
+        status = dict(self._boss_rows()).get(boss)
+        self.close_windows()
+        return status is not None and "cooldown" not in status.lower()
 
     # ------------------------------------------------------------ login
     def login(self, username, password):

@@ -29,7 +29,11 @@ class Engine:
         self.market = market            # MarketWatcher (opcional)
         self.hunts = H.load_hunts()
         self.tasks = G.load_tasks()
-        self.active_tasks = (memory.get("active_tasks") if memory else None) or []
+        self.active_tasks = []  # tasks nao sao mais lidas: nao deixa a task antiga do memory.json mandar na caca
+        self._prey_warned = set()  # avisos ja dados (espaco, criatura, caça): nao repete a cada checagem
+        self.boss_until = 0        # auto boss rodando: ate esse horario (rede de seguranca) o bot nao mexe nas contas
+        self.boss_last = None      # ultimo boss da fila: quando ele termina, o bot volta as funções
+        self.boss_checked = 0
         self.cooldown = {}              # acao -> horario liberado
         self.last_ok = {}               # acao -> ultimo sucesso
         self.phase_since = (None, 0)    # (fase, desde)
@@ -136,6 +140,9 @@ class Engine:
             self.snapshot["goal"] = self.imb_hunt[1]
             return self.imb_hunt[0]
         hunt, why, _ = self.goal_target(st)
+        if hunt and self._hunt_unavailable(hunt):
+            why = f"{why} (indisponível no jogo: usando a caça padrão)"
+            hunt = None
         self.snapshot["goal"] = why
         if hunt:
             return hunt
@@ -192,6 +199,9 @@ class Engine:
             if isinstance(name, str) and name:
                 self.hunt_known = current = name
         self.snapshot.update(state=st, phase=st.phase, hunt=current or (st.dest if st.phase == "city" else None))
+        row = self._row(acc, st)
+        row.update(phase=st.phase, gold=st.gold, loot=st.loot_items, target=current or (st.dest if st.phase == "city" else None),
+                   auto=self.auto_sell(st), premium=st.premium)
         if self.memory and st.members:
             self.memory.set("party", [[m.name, m.role, m.level] for m in st.members])
         if st.phase in ("hunting", "house", "house_idle", "city") and not self.hunts_checked:
@@ -231,6 +241,14 @@ class Engine:
             self.snapshot["goal"] = "aguardando você usar o jogo"
             return
 
+        # 3b) auto boss: uma vez por dia (00:01). Enquanto a fila roda, o bot nao mexe em nenhuma conta.
+        if now < self.boss_until:
+            self._boss_hold(acc, now)
+            return
+        if acc is self.accounts[0] and st.phase in ("hunting", "city") and self._boss_due(now):
+            self._auto_boss(acc, now)
+            return
+
         # 4) loot: protecao de boss sempre ligada; Auto Sell conforme Premium/escolha
         auto = self.auto_sell(st)
         every = self.cfg["loot"]["check_minutes"] * 60
@@ -264,11 +282,6 @@ class Engine:
                 found = self._do("ler bestiary", acc.read_bestiary)
                 if isinstance(found, dict):
                     self._merge_bestiary(found)
-                return
-        if goals.get("enabled", True):
-            every = goals.get("check_minutes", 10) * 60
-            if now - self.last_ok.get("tasks", -every) >= every and self._ready("tasks"):
-                self._tasks(acc, st)
                 return
 
         # 7) prey (so' caçando: o tempo da prey so' corre na caça)
@@ -370,6 +383,17 @@ class Engine:
         try:
             slots = acc.read_prey()
             self.snapshot["prey"] = [(s["creature"], s["bonus"], s["time"]) for s in slots if s["state"] == "active"]
+            self._row(acc, st)["prey"] = [(s["index"] + 1, s["creature"], s["bonus"], s["time"]) for s in slots
+                                          if s["state"] == "active"]
+            # prey ativa de criatura que nao esta na caça atual: troca a lista (ouro, nunca cartas) pelas regras de gasto
+            in_hunt = {c.casefold() for c in creatures}
+            swapped = False
+            for s in slots:
+                if s["state"] == "active" and s["creature"] and s["creature"].casefold() not in in_hunt:
+                    gold, did = self._swap_prey(acc, s, gold, hunt)
+                    swapped = swapped or did
+            if swapped:
+                slots = acc.read_prey()
             for slot in slots:
                 while slot["state"] == "selection":
                     _, spent = self._spent_today()
@@ -379,20 +403,17 @@ class Engine:
                     kind, value = action
                     if kind == "reroll":
                         if rerolls >= cfg.get("max_rerolls_per_check", 10):
-                            action = ("any", slot["options"][0])
-                            kind, value = action
-                        else:
-                            acc.prey_reroll(slot["index"], value)
-                            rerolls += 1
-                            if value:
-                                self._add_spent(value)
-                                gold = None if gold is None else gold - value
-                            self.log(f"Prey espaço {slot['index'] + 1}: trocou a lista ({'grátis' if not value else f'{value} de ouro'})")
-                            slot = next(s for s in acc.read_prey() if s["index"] == slot["index"])
-                            continue
+                            break  # limite de trocas nesta checagem: tenta de novo depois
+                        acc.prey_reroll(slot["index"], value)
+                        rerolls += 1
+                        if value:
+                            self._add_spent(value)
+                            gold = None if gold is None else gold - value
+                        self.log(f"Prey espaço {slot['index'] + 1}: trocou a lista ({'grátis' if not value else f'{value} de ouro'})")
+                        slot = next(s for s in acc.read_prey() if s["index"] == slot["index"])
+                        continue
                     acc.prey_choose(slot["index"], value)
-                    why = "da caça" if kind == "choose" else "qualquer (nenhuma da caça; tenta de novo quando liberar)"
-                    self.log(f"Prey espaço {slot['index'] + 1}: {value} ({why})")
+                    self.log(f"Prey espaço {slot['index'] + 1}: {value} (da caça)")
                     break
             self.last_ok["prey"] = self.clock()
         except Exception as error:
@@ -403,37 +424,90 @@ class Engine:
             except Exception:
                 pass
 
-    def _tasks(self, acc, st):
-        goals = self.cfg["goals"]
+    def _row(self, acc, st):
+        """Linha da conta no painel (chave = nome do personagem; sem nome: 'conta N')."""
         try:
-            data = acc.read_tasks()
-            for task in data["active"]:
-                if task["ready"]:
-                    text = acc.deliver_task(task["name"])
-                    self.log(f"task entregue: {task['name']} ({text})")
-                    data = acc.read_tasks()
-                    break
-            active = [a for a in data["active"] if not a["ready"]]
-            for name in G.next_tasks_to_accept(goals["tasks"], data["rows"], len(data["active"]), self.tasks,
-                                               self.hunts, st.level, 1000000):
-                acc.accept_task(name)
-                self.log(f"task aceita: {name}")
-                data = acc.read_tasks()
-            self.active_tasks = [{"name": a["name"], "ready": a["ready"], "have": a["have"], "need": a["need"]}
-                                 for a in data["active"]]
-            self.task_rows = data["rows"]
-            if self.memory:
-                self.memory.set("active_tasks", self.active_tasks)
-                self.memory.set("task_rows", data["rows"])
-            self.snapshot["tasks"] = [(a["name"], a["have"], a["need"]) for a in self.active_tasks]
-            self.last_ok["tasks"] = self.clock()
-        except Exception as error:
-            self._fail("tasks", error)
-        finally:
+            number = self.accounts.index(acc) + 1
+        except ValueError:
+            number = "?"
+        key = st.name or f"conta {number}"
+        return self.snapshot.setdefault("accounts", {}).setdefault(key, {})
+
+    def _boss_due(self, now):
+        cfg = self.cfg.get("boss") or {}
+        if not cfg.get("enabled", True):
+            return False
+        when = datetime.datetime.fromtimestamp(now)
+        hour, minute = (int(x) for x in str(cfg.get("time", "00:01")).split(":"))
+        done = self.memory.get("boss_day") if self.memory else getattr(self, "_boss_day", None)
+        return when.hour * 60 + when.minute >= hour * 60 + minute and done != when.date().isoformat()
+
+    def _auto_boss(self, acc, now):
+        cfg = self.cfg.get("boss") or {}
+        day = datetime.datetime.fromtimestamp(now).date().isoformat()
+        result = self._do("auto boss", acc.start_auto_boss)
+        if result is None:
+            return  # erro: tenta de novo na proxima volta
+        status, last = result if isinstance(result, tuple) else (result, None)
+        if self.memory:
+            self.memory.set("boss_day", day)
+        self._boss_day = day
+        if status == "iniciado":
+            # segue a fila ate o ULTIMO boss terminar; 'max_hours' so' e' a rede de seguranca
+            self.boss_last = last
+            self.boss_until = now + cfg.get("max_hours", 4) * 3600
+            self.boss_checked = now
+            self.log(f"auto boss: fila iniciada; acompanho até o último ({last or '?'}) terminar")
+        else:
+            self.log(f"auto boss: {status} (volta a tentar amanhã)")
+
+    def _boss_hold(self, acc, now):
+        """Enquanto a fila de bosses roda, nao mexe nas contas. Libera quando o ultimo boss terminar (checa a cada 60s)."""
+        if self.boss_last and acc is self.accounts[0] and now - self.boss_checked >= 60:
+            self.boss_checked = now
             try:
-                acc.close_windows()
-            except Exception:
-                pass
+                pending = acc.boss_pending(self.boss_last)
+            except Exception as error:
+                self._fail("auto boss", error)
+                return
+            if not pending:
+                self.log(f"auto boss: último da fila ({self.boss_last}) terminou; o bot volta às funções")
+                self.boss_last, self.boss_until = None, 0
+        if self.boss_last is None:
+            self.boss_until = 0
+        self.snapshot["goal"] = f"auto boss rodando (até {self.boss_last or '…'})"
+
+    def _swap_prey(self, acc, slot, gold, hunt):
+        """Prey ativa de criatura fora da caça: 'Trocar lista' (ouro) se a regra de gasto deixar.
+        Devolve (ouro novo, trocou?)."""
+        cfg = self.cfg["prey"]
+        idx, creature = slot["index"] + 1, slot["creature"]
+        rr = slot.get("reroll") or {}
+        price = rr.get("gold")
+        if not slot.get("reroll_enabled") or not price or rr.get("cards"):
+            key = (slot["index"], creature, hunt)
+            if key not in self._prey_warned:
+                self._prey_warned.add(key)
+                self.log(f"Prey espaço {idx}: {creature} não é da caça {hunt}; sem troca em ouro, fica até acabar")
+            return gold, False
+        reserve = cfg.get("reserve_gold", 0)
+        _, spent = self._spent_today()
+        affordable = gold is None or gold - price >= reserve
+        within = cfg.get("mode") == "until_found" or spent + price <= cfg.get("gold_per_day", 0)
+        if not (affordable and within):
+            key = (slot["index"], creature, hunt, "limite")
+            if key not in self._prey_warned:
+                self._prey_warned.add(key)
+                self.log(f"Prey espaço {idx}: {creature} não é da caça {hunt}; troca de {price} de ouro fora do limite")
+            return gold, False
+        try:
+            acc.prey_reroll(slot["index"], price)
+        except Exception as error:
+            self.log(f"Prey espaço {idx}: troca de {creature} falhou ({error})")
+            return gold, False
+        self._add_spent(price)
+        self.log(f"Prey espaço {idx}: {creature} não é da caça {hunt}: troquei a lista ({price} de ouro)")
+        return (None if gold is None else gold - price), True
 
     def _imbuing(self, acc, st):
         """Le o set da party, aplica as metas prontas, compra materiais e escolhe a caça dos que faltam."""
@@ -589,14 +663,31 @@ class Engine:
         if self.memory:
             self.memory.set("bestiary", progress)
 
+    def _apply_builder(self, acc, target):
+        from . import builder
+        acc.open_picker()
+        builder.apply_for_hunt(acc.page, target, self.log)
+
     def _start(self, acc, target, diff=None):
         diff = diff or self.cfg["difficulty"]
+        if (self.cfg.get("builder") or {}).get("enabled", True):
+            self._do("builder", lambda: self._apply_builder(acc, target))
         if self._do("iniciar caça", acc.start_hunt, target, diff):
             self.cooldown["iniciar caça"] = self.clock() + 20      # o jogo demora uns segundos pra mostrar a caça
             self.hunt_known = target
             self.log(f"caçando {target} ({diff})")
             if self.memory:
                 self.memory.set("last_hunt", target)
+        elif target != (self.cfg.get("hunt") or "").strip():
+            # caça que o jogo nao tem (ex.: task aponta pra uma caça renomeada): usa a padrao por 1h
+            self._hunt_unavailable(target)  # garante o dicionario
+            self.hunt_fail[target.casefold()] = self.clock() + 3600
+            self.log(f"caça '{target}' indisponível no jogo: uso a caça padrão por 1h")
+
+    def _hunt_unavailable(self, name):
+        if not hasattr(self, "hunt_fail"):
+            self.hunt_fail = {}
+        return self.hunt_fail.get(name.casefold(), 0) > self.clock()
 
     def _relogin(self, acc):
         if not self.cfg.get("relogin") or not self.credentials:

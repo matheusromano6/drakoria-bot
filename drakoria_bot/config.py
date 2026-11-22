@@ -15,6 +15,9 @@ DEFAULTS = {
     "hunt": "",                           # caça padrao (escolhida pelo usuario); vazio = sem caça padrao -> treina
     # stamina de caça (max 42h; abaixo de 14h a XP cai pela metade): treina abaixo de train_below ate resume
     "stamina": {"enabled": True, "train_below_hours": 14, "resume_hours": 24},
+    # auto boss: 1x por dia no horario (Menu > Aventura > Bosses > Iniciar Auto Boss). Acompanha o ultimo boss da fila;
+    # max_hours = rede de seguranca se o ultimo nunca terminar
+    "boss": {"enabled": True, "time": "00:01", "max_hours": 4},
     "difficulty": "Normal",               # Insano+ pede level (250/450/700/1000)
     "loot": {
         "auto_sell": "auto",              # "auto" = liga se a conta for Premium | "on" | "off"
@@ -72,6 +75,8 @@ DEFAULTS = {
         "daily_budget": 3000000,           # ouro por dia em compras de material de imbuement
         "check_minutes": 2,
     },
+    # Builder (Escolher Hunt > Builder): ao iniciar a caca aplica no Helper as magias e curas que o jogo sugere pra cada personagem
+    "builder": {"enabled": True},
     "user_idle_seconds": 60,              # janela do usuario aberta: o bot espera isso depois que ela fechar
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s

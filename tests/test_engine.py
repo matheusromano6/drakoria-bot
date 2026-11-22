@@ -1,4 +1,5 @@
 import copy
+import datetime
 import unittest
 
 from drakoria_bot import config
@@ -60,7 +61,15 @@ class FakeAccount:
         self._call("start_hunt", hunt, difficulty)
         self.st.phase = "hunting"
         self.st.difficulty = difficulty
-        self.st.tracker = list(next(h["creatures"] for h in HUNTS if h["name"] == hunt))
+        self.st.tracker = list(next((h["creatures"] for h in HUNTS if h["name"] == hunt), []))
+
+    def start_auto_boss(self):
+        self._call("start_auto_boss")
+        return getattr(self, "boss_result", ("sem bosses prontos", None))
+
+    def boss_pending(self, boss):
+        self._call("boss_pending", boss)
+        return getattr(self, "boss_still", False)
 
     def read_bestiary(self):
         self._call("read_bestiary")
@@ -151,6 +160,7 @@ def make(acc, creds=None, **cfg_over):
     cfg_over.setdefault("prey", {"enabled": False})
     cfg_over.setdefault("goals", {"enabled": False})
     cfg_over.setdefault("imbuing", {"enabled": False})
+    cfg_over.setdefault("boss", {"enabled": False})  # auto boss tem teste proprio (horario 00:01)
     cfg = config._merge(config.DEFAULTS, cfg_over)
     clock = Clock()
     logs = []
@@ -360,12 +370,12 @@ class PreyEngineTest(unittest.TestCase):
         self.assertIn(("prey_choose", 0, "Spider"), self.acc.calls)
         self.assertEqual(eng._spent_today()[1], 300)
 
-    def test_budget_exhausted_picks_any(self):
+    def test_budget_exhausted_waits_not_any(self):
         self.acc.prey = [prey_slot(["Bat"], free=False)]
         self.acc.prey[0]["reroll"]["gold"] = 2000
         self.run_prey()
         self.assertNotIn("prey_reroll", names(self.acc))
-        self.assertIn(("prey_choose", 0, "Bat"), self.acc.calls)
+        self.assertFalse(any(c[0] == "prey_choose" for c in self.acc.calls))  # criatura fora da caça: espera
 
     def test_active_slots_left_alone_and_checked_periodically(self):
         self.acc.prey = [dict(prey_slot([]), state="active", creature="Troll")]
@@ -398,42 +408,6 @@ class GoalsEngineTest(unittest.TestCase):
         eng, clock, logs = make(acc, goals=conf)
         eng.hunts, eng.tasks = GOAL_HUNTS, GOAL_TASKS
         return eng, clock, logs
-
-    def test_manual_active_task_drives_hunt(self):
-        acc = FakeAccount(phase="city")
-        acc.task_rows = {"Restos de Rotworm": "active"}
-        acc.task_active = [{"name": "Restos de Rotworm", "have": 3, "need": 250, "deliver": False}]
-        eng, clock, logs = self.make(acc)
-        eng.tick(acc)       # loot
-        eng.tick(acc)       # tasks
-        eng.tick(acc)       # caça
-        self.assertEqual(acc.calls[-1], ("start_hunt", "Rotworms", "Normal"))
-        self.assertNotIn("best_hunt", names(acc))
-
-    def test_accepts_queue_in_order_up_to_two_reachable(self):
-        acc = FakeAccount(phase="city")
-        acc.task_rows = {"Restos de Rotworm": "available", "Dedos de Cyclops": "available", "Couros de Dragão": "available"}
-        eng, clock, logs = self.make(acc, tasks=["Couros de Dragão", "Dedos de Cyclops", "Restos de Rotworm"])
-        eng.tick(acc)
-        eng.tick(acc)
-        accepted = [c[1] for c in acc.calls if c[0] == "accept_task"]
-        self.assertEqual(accepted, ["Couros de Dragão", "Dedos de Cyclops"])     # sem limite de level: a ordem manda
-        eng.tick(acc)
-        self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Dragon Lair"))
-
-    def test_delivers_ready_and_takes_next(self):
-        acc = FakeAccount(phase="hunting", tracker=["Carrion Worm", "Rotworm"])
-        acc.task_rows = {"Restos de Rotworm": "active", "Dedos de Cyclops": "available"}
-        acc.task_active = [{"name": "Restos de Rotworm", "have": 250, "need": 250, "deliver": True}]
-        eng, clock, logs = self.make(acc, tasks=["Restos de Rotworm", "Dedos de Cyclops"])
-        eng.tick(acc)
-        eng.tick(acc)
-        self.assertIn(("deliver_task", "Restos de Rotworm"), acc.calls)
-        self.assertIn(("accept_task", "Dedos de Cyclops"), acc.calls)
-        self.assertTrue(any("task entregue" in line for line in logs))
-        eng.tick(acc)
-        eng.tick(acc)       # 2 leituras na caça errada -> troca
-        self.assertEqual(acc.calls[-1][:2], ("start_hunt", "Cyclops"))
 
     def test_bestiary_queue_until_goal_reached(self):
         acc = FakeAccount(phase="city")
@@ -489,15 +463,6 @@ class GoalDifficultyTest(unittest.TestCase):
         eng.hunts, eng.tasks = GOAL_HUNTS, GOAL_TASKS
         return eng, clock, logs
 
-    def test_task_uses_its_difficulty(self):
-        acc = FakeAccount(phase="city")
-        acc.task_rows = {"Restos de Rotworm": "active"}
-        acc.task_active = [{"name": "Restos de Rotworm", "have": 0, "need": 250, "deliver": False}]
-        eng, clock, logs = self.make(acc, difficulty={"Restos de Rotworm": "Difícil"})
-        for _ in range(3):
-            eng.tick(acc)
-        self.assertEqual(acc.calls[-1], ("start_hunt", "Rotworms", "Difícil"))
-
     def test_same_hunt_wrong_difficulty_restarts(self):
         acc = FakeAccount(phase="hunting", tracker=["Carrion Worm", "Rotworm"])
         acc.st.difficulty = "Normal"
@@ -542,6 +507,40 @@ class UserWindowTest(unittest.TestCase):
         eng.tick(acc)
         self.assertIn("start_hunt", names(acc))
         self.assertEqual(sum("janela aberta pelo usuário" in line for line in logs), 1)
+
+
+class AutoBossTest(unittest.TestCase):
+    def test_auto_boss_once_per_day_after_midnight(self):
+        acc = FakeAccount(phase="city")
+        eng, clock, logs = make(acc, boss={"enabled": True, "time": "00:01", "hold_minutes": 60})
+        clock.t = datetime.datetime(2026, 11, 22, 0, 0).timestamp()
+        eng.tick(acc)
+        self.assertNotIn("start_auto_boss", names(acc))           # antes de 00:01: nada
+        clock.t = datetime.datetime(2026, 11, 22, 0, 2).timestamp()
+        eng.tick(acc)
+        self.assertEqual(names(acc).count("start_auto_boss"), 1)  # 00:02: dispara
+        clock.t += 60
+        eng.tick(acc)
+        self.assertEqual(names(acc).count("start_auto_boss"), 1)  # mesmo dia: nao repete
+
+    def test_holds_until_last_boss_finishes(self):
+        acc = FakeAccount(phase="city")
+        acc.boss_result = ("iniciado", "Boss Final")
+        acc.boss_still = True
+        eng, clock, logs = make(acc, boss={"enabled": True, "time": "00:01", "max_hours": 4})
+        clock.t = datetime.datetime(2026, 11, 22, 0, 2).timestamp()
+        eng.tick(acc)                                    # dispara a fila
+        self.assertEqual(names(acc).count("start_auto_boss"), 1)
+        for _ in range(3):                               # ultimo ainda pendente: nao mexe (sem novas acoes)
+            clock.t += 61
+            n = len(acc.calls)
+            eng.tick(acc)
+            self.assertEqual(len(acc.calls), n + 1)      # so o boss_pending (checagem)
+        acc.boss_still = False                           # ultimo terminou: volta as funcoes
+        clock.t += 61
+        eng.tick(acc)
+        self.assertTrue(any("terminou" in line for line in logs))
+        self.assertIsNone(eng.boss_last)
 
 
 if __name__ == "__main__":

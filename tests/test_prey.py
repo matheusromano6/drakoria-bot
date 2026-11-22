@@ -39,17 +39,17 @@ class PreyRulesTest(unittest.TestCase):
 
     def test_paid_reroll_respects_budget(self):
         self.assertEqual(P.decide(slot(["Bat"], gold=400), ["Troll"], CFG, 500), ("reroll", 400))
-        self.assertEqual(P.decide(slot(["Bat"], gold=600), ["Troll"], CFG, 500), ("any", "Bat"))
+        self.assertIsNone(P.decide(slot(["Bat"], gold=600), ["Troll"], CFG, 500))
 
     def test_until_found_ignores_budget_but_not_reserve(self):
         cfg = {"mode": "until_found", "gold_per_day": 0, "reserve_gold": 1000}
         self.assertEqual(P.decide(slot(["Bat"], gold=400), ["Troll"], cfg, 99999, gold_now=5000), ("reroll", 400))
-        self.assertEqual(P.decide(slot(["Bat"], gold=400), ["Troll"], cfg, 0, gold_now=1200), ("any", "Bat"))
+        self.assertIsNone(P.decide(slot(["Bat"], gold=400), ["Troll"], cfg, 0, gold_now=1200))
 
     def test_never_pays_cards_or_unknown(self):
-        self.assertEqual(P.decide(slot(["Bat"], cards=True), ["Troll"], CFG, 0), ("any", "Bat"))
-        self.assertEqual(P.decide(slot(["Bat"]), ["Troll"], CFG, 0), ("any", "Bat"))
-        self.assertEqual(P.decide(slot(["Bat"], free=True, enabled=False), ["Troll"], CFG, 0), ("any", "Bat"))
+        self.assertIsNone(P.decide(slot(["Bat"], cards=True), ["Troll"], CFG, 0))
+        self.assertIsNone(P.decide(slot(["Bat"]), ["Troll"], CFG, 0))
+        self.assertIsNone(P.decide(slot(["Bat"], free=True, enabled=False), ["Troll"], CFG, 0))
 
 
 if __name__ == "__main__":

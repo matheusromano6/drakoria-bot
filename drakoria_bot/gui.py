@@ -12,7 +12,7 @@ from tkinter import ttk
 
 import customtkinter as ctk
 
-from . import VERSION, browsers, config, goals, hunts, imbuing, updater
+from . import VERSION, browsers, config, hunts, updater
 from .market import imbuements as imb
 from .market.store import Store as MarketStore
 from .credentials import Credentials
@@ -67,26 +67,22 @@ class App:
         self._last_view = None
         try:
             self.hunt_list = hunts.load_hunts()
-            self.task_list = goals.doable_tasks(goals.load_tasks(), self.hunt_list)
         except Exception:
-            self.hunt_list, self.task_list = [], []
+            self.hunt_list = []
         self.hunt_names = [h["name"] for h in self.hunt_list]
 
         self._build_header()
         self.tabs = ctk.CTkTabview(root, fg_color=PANEL, segmented_button_selected_color=ACCENT,
                                    segmented_button_selected_hover_color=ACCENT_HOVER, text_color=DARK_TEXT)
         self.tabs.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        for name in ("Painel", "Regras", "Objetivos", "Imbuements", "Market", "Login", "Log"):
+        for name in ("Painel", "Regras", "Market", "Login"):
             self.tabs.add(name)
         self._build_panel(self.tabs.tab("Painel"))
         self._build_rules(self.tabs.tab("Regras"))
-        self._build_goals(self.tabs.tab("Objetivos"))
-        self._build_imbuing(self.tabs.tab("Imbuements"))
         self._build_market(self.tabs.tab("Market"))
         if hasattr(self.runner, "notify"):
             self.runner.notify = self.notify
         self._build_login(self.tabs.tab("Login"))
-        self._build_log(self.tabs.tab("Log"))
 
         root.protocol("WM_DELETE_WINDOW", self.request_close)
         if sys.platform == "win32":
@@ -132,15 +128,14 @@ class App:
         except queue.Empty:
             pass
         if lines:
-            for box in (self.log_box, self.mini_log):
-                box.configure(state="normal")
-                box.insert("end", "\n".join(lines) + "\n")
-                limit = MAX_LOG_LINES if box is self.log_box else 6
-                count = int(box.index("end-1c").split(".")[0])
-                if count > limit:
-                    box.delete("1.0", f"{count - limit}.0")
-                box.see("end")
-                box.configure(state="disabled")
+            box = self.mini_log
+            box.configure(state="normal")
+            box.insert("end", "\n".join(lines) + "\n")
+            count = int(box.index("end-1c").split(".")[0])
+            if count > 60:
+                box.delete("1.0", f"{count - 60}.0")
+            box.see("end")
+            box.configure(state="disabled")
         self.root.after(250, self._poll_log)
 
     # ---------------------------------------------------------------- header
@@ -186,7 +181,7 @@ class App:
         self.stats = ctk.CTkLabel(tab, text="", text_color=TEXT, justify="left", anchor="w", font=("Segoe UI", 12))
         self.stats.pack(fill="x", padx=8, pady=4)
         ctk.CTkLabel(tab, text="Últimos eventos", text_color=MUTED, anchor="w").pack(fill="x", padx=8, pady=(6, 0))
-        self.mini_log = ctk.CTkTextbox(tab, height=120, fg_color=BG, text_color=MUTED, font=("Consolas", 10), state="disabled")
+        self.mini_log = ctk.CTkTextbox(tab, height=200, fg_color=BG, text_color=MUTED, font=("Consolas", 10), state="disabled")
         self.mini_log.pack(fill="both", expand=True, padx=4, pady=4)
         self._show_party(self.memory.get("party") or [])
 
@@ -204,9 +199,8 @@ class App:
         snap = self.runner.snapshot if self.runner.running else None
         st = snap.get("state") if snap else None
         if st is not None:
-            view = (snap["phase"], snap.get("hunt"), snap.get("target"), st.difficulty, st.gold, st.loot_items, st.xp_hour,
-                    st.profit_hour, st.reserve, tuple(snap.get("prey") or []), tuple(snap.get("tasks") or []),
-                    snap.get("goal"), st.stamina and int(st.stamina * 60),
+            view = (snap["phase"], snap.get("hunt"), snap.get("target"), st.difficulty, st.xp_hour,
+                    st.profit_hour, str(snap.get("accounts")), snap.get("goal"), st.stamina and int(st.stamina * 60),
                     tuple((m.name, m.role, m.level, m.xp_pct, m.hp, m.hp_max) for m in st.members))
             if view != self._last_view:          # so' redesenha o que mudou
                 self._last_view = view
@@ -221,20 +215,18 @@ class App:
                         name.configure(text=m.name)
                         info.configure(text=f"{m.role}  Lv {m.level} · {m.xp_pct}%")
                         bar.set(m.hp / m.hp_max if m.hp_max else 0)
-                loot = "-" if st.loot_items is None else st.loot_items
                 stam = "-" if st.stamina is None else f"{int(st.stamina)}h{int(st.stamina % 1 * 60):02d}"
-                self.stats.configure(text=(
-                    f"Ouro {st.gold}   ·   Loot Pouch {loot}   ·   Stamina {stam}   ·   Reserva offline {st.reserve or '-'}\n"
-                    f"XP/h {st.xp_hour or '-'}   ·   Lucro/h {st.profit_hour or '-'}\n"
-                    f"Alvo: {snap.get('target') or '-'}   ·   Auto Sell {'Premium' if st.premium else 'Free'}\n"
-                    f"Prey: {' · '.join(f'{c} {b} ({t})' for c, b, t in snap.get('prey') or []) or '-'}\n"
-                    f"Tasks: {' · '.join(f'{n} {h}/{q}' for n, h, q in snap.get('tasks') or []) or '-'}"))
-                self.goal_status.configure(text=f"Objetivo agora: {snap.get('goal') or 'nenhum (caça da aba Regras)'}")
+                lines = [f"XP/h {st.xp_hour or '-'}   ·   Lucro/h {st.profit_hour or '-'}   ·   Stamina {stam}"]
+                for name, row in (snap.get("accounts") or {}).items():
+                    loot = "-" if row.get("loot") is None else row["loot"]
+                    lines.append(f"{name}:  Ouro {row.get('gold') or '-'}   ·   Loot Pouch {loot}   ·   "
+                                 f"Alvo {row.get('target') or '-'}   ·   Auto Sell {'ligado' if row.get('auto') else 'desligado'}")
+                    prey = " · ".join(f"espaço {i} {c} {b} ({t})" for i, c, b, t in row.get("prey") or [])
+                    lines.append(f"      Prey: {prey or '-'}")
+                self.stats.configure(text="\n".join(lines))
         self._refresh_market()
-        self._imbuing_refresh()
         self._imb_render()
         self._refresh_spent()
-        self._refresh_task_market()
         self.root.after(1000, self._poll_state)
 
     # ---------------------------------------------------------------- regras
@@ -244,7 +236,9 @@ class App:
         grid.columnconfigure(1, weight=1)
 
         def label(r, text):
-            ctk.CTkLabel(grid, text=text, text_color=TEXT, anchor="w").grid(row=r, column=0, sticky="w", pady=6, padx=(0, 10))
+            widget = ctk.CTkLabel(grid, text=text, text_color=TEXT, anchor="w")
+            widget.grid(row=r, column=0, sticky="w", pady=6, padx=(0, 10))
+            return widget
 
         def menu(r, values, current, on_change):
             m = ctk.CTkOptionMenu(grid, values=values, command=on_change, fg_color=PANEL_ALT, button_color=BORDER,
@@ -255,8 +249,21 @@ class App:
             return m
 
         label(1, "Caça")
-        menu(1, [NO_HUNT] + self.hunt_names, self.cfg["hunt"] or NO_HUNT,
-             lambda v: self._set("hunt", "" if v == NO_HUNT else v))
+        # digitavel: a lista filtra conforme se digita; Enter/saida confirma (nome fora da lista = volta ao atual)
+        self.hunt_box = ctk.CTkComboBox(grid, values=[NO_HUNT] + self.hunt_names, width=240, fg_color=PANEL_ALT,
+                                        button_color=BORDER, button_hover_color=ACCENT_HOVER,
+                                        dropdown_fg_color=PANEL_ALT, text_color=TEXT,
+                                        command=lambda v: self._hunt_set(v))
+        self.hunt_box.set(self.cfg["hunt"] or NO_HUNT)
+        self.hunt_box.grid(row=1, column=1, sticky="ew", pady=6)
+        entry = self.hunt_box._entry
+        self._hunt_pop = None
+        self._hunt_lb = None
+        entry.bind("<KeyRelease>", lambda e: self._hunt_filter() if e.keysym not in ("Return", "Escape") else None)
+        entry.bind("<Return>", lambda e: self._hunt_confirm())
+        entry.bind("<Down>", lambda e: self._hunt_focus_list())
+        entry.bind("<Escape>", lambda e: self._hunt_hide())
+        entry.bind("<FocusOut>", lambda e: self.after(200, self._hunt_confirm))
         label(2, "Dificuldade")
         menu(2, config.DIFFICULTIES, self.cfg["difficulty"], lambda v: self._set("difficulty", v))
         label(3, "Auto Sell")
@@ -274,13 +281,13 @@ class App:
                         ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(8, 2))
         label(7, "Trocar lista")
         menu(7, list(PREY_MODES.values()), PREY_MODES.get(self.cfg["prey"]["mode"], PREY_MODES["budget"]),
-             lambda v: self._set_prey("mode", {b: a for a, b in PREY_MODES.items()}[v]))
-        label(8, "Ouro por dia")
+             self._prey_mode_picked)
+        self.gold_label = label(8, "Ouro por dia")
         self.prey_gold_var = tk.StringVar(value=str(self.cfg["prey"]["gold_per_day"]))
-        gold_entry = ctk.CTkEntry(grid, textvariable=self.prey_gold_var, width=100, fg_color=PANEL_ALT)
-        gold_entry.grid(row=8, column=1, sticky="w", pady=6)
-        gold_entry.bind("<FocusOut>", lambda e: self._save_prey_gold())
-        gold_entry.bind("<Return>", lambda e: self._save_prey_gold())
+        self.gold_entry = ctk.CTkEntry(grid, textvariable=self.prey_gold_var, width=100, fg_color=PANEL_ALT)
+        self.gold_entry.bind("<FocusOut>", lambda e: self._save_prey_gold())
+        self.gold_entry.bind("<Return>", lambda e: self._save_prey_gold())
+        self._show_prey_gold(self.cfg["prey"]["mode"] != "until_found")
         label(9, "Stamina")
         stam = ctk.CTkFrame(grid, fg_color="transparent")
         stam.grid(row=9, column=1, sticky="w", pady=6)
@@ -294,6 +301,10 @@ class App:
             e.bind("<FocusOut>", lambda ev, k=key, v=var: self._save_stamina(k, v))
             e.bind("<Return>", lambda ev, k=key, v=var: self._save_stamina(k, v))
             ctk.CTkLabel(stam, text=suffix, text_color=TEXT).pack(side="left")
+        self.builder_var = tk.BooleanVar(value=bool((self.cfg.get("builder") or {}).get("enabled", True)))
+        ctk.CTkCheckBox(grid, text="Builder: aplicar magias e curas da caça ao iniciar", variable=self.builder_var,
+                        fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
+                        command=lambda: self._set_builder(self.builder_var.get())).grid(row=10, column=0, columnspan=2, sticky="w", pady=6)
         self.relogin_var = tk.BooleanVar(value=bool(self.cfg["relogin"]))
         ctk.CTkCheckBox(grid, text="Relogin automático", variable=self.relogin_var, fg_color=ACCENT, hover_color=ACCENT_HOVER,
                         text_color=TEXT, command=lambda: self._set("relogin", self.relogin_var.get())
@@ -305,6 +316,10 @@ class App:
                                "Prey: escolhe a criatura da caça; senão troca a lista (grátis, depois com ouro); "
                                "nunca gasta cartas nem Drako Coins.",
                      text_color=MUTED, wraplength=840, justify="left").pack(anchor="w", padx=10, pady=6)
+
+    def _set_builder(self, on):
+        self.cfg.setdefault("builder", {})["enabled"] = bool(on)
+        self.save()
 
     def _set(self, key, value):
         self.cfg[key] = value
@@ -320,6 +335,96 @@ class App:
         self.cfg["prey"][key] = value
         self.save()
         self.log(f"regra: prey.{key} = {value}")
+
+    def _hunt_set(self, value):
+        self._set("hunt", "" if value == NO_HUNT else value)
+
+    def _hunt_matches(self, text):
+        # cada palavra digitada tem que aparecer no nome, em qualquer ordem ("bastion cobra" acha "Cobra Bastion")
+        words = text.lower().split()
+        return [h for h in self.hunt_names if all(w in h.lower() for w in words)]
+
+    def _hunt_filter(self):
+        entry = self.hunt_box._entry
+        text = entry.get().strip()
+        matches = self._hunt_matches(text) if text else []
+        if not matches:
+            self._hunt_hide()
+            return
+        if self._hunt_pop is None or not self._hunt_pop.winfo_exists():
+            self._hunt_pop = tk.Toplevel(self)
+            self._hunt_pop.overrideredirect(True)
+            self._hunt_pop.attributes("-topmost", True)
+            self._hunt_lb = tk.Listbox(self._hunt_pop, bg=PANEL_ALT, fg=TEXT, selectbackground=ACCENT,
+                                       selectforeground=DARK_TEXT, highlightthickness=1, highlightbackground=BORDER,
+                                       borderwidth=0, activestyle="none", font=("Segoe UI", 10))
+            self._hunt_lb.pack(fill="both", expand=True)
+            self._hunt_lb.bind("<ButtonRelease-1>", lambda e: self._hunt_pick_selected())
+            self._hunt_lb.bind("<Return>", lambda e: self._hunt_pick_selected())
+            self._hunt_lb.bind("<Escape>", lambda e: self._hunt_hide())
+        shown = matches[:12]
+        self._hunt_lb.delete(0, "end")
+        for name in shown:
+            self._hunt_lb.insert("end", name)
+        self._hunt_lb.configure(height=len(shown))
+        self._hunt_lb.selection_clear(0, "end")
+        self._hunt_lb.selection_set(0)
+        x, y = entry.winfo_rootx(), entry.winfo_rooty() + entry.winfo_height()
+        self._hunt_pop.geometry(f"{entry.winfo_width()}x{len(shown) * 22 + 4}+{x}+{y}")
+        self._hunt_pop.deiconify()
+        self._hunt_pop.lift()
+
+    def _hunt_hide(self):
+        if self._hunt_pop is not None and self._hunt_pop.winfo_exists():
+            self._hunt_pop.withdraw()
+
+    def _hunt_focus_list(self):
+        if self._hunt_pop is not None and self._hunt_pop.winfo_exists() and self._hunt_pop.winfo_viewable():
+            self._hunt_lb.focus_set()
+            self._hunt_lb.selection_set(0)
+
+    def _hunt_pick_selected(self):
+        sel = self._hunt_lb.curselection() if self._hunt_lb is not None else ()
+        if sel:
+            self.hunt_box.set(self._hunt_lb.get(sel[0]))
+            self._hunt_hide()
+            self._hunt_confirm()
+
+    def _hunt_confirm(self):
+        typed = self.hunt_box._entry.get().strip()
+        if self._hunt_pop is not None and self._hunt_pop.winfo_viewable() and self._hunt_lb.curselection():
+            typed = self._hunt_lb.get(self._hunt_lb.curselection()[0])  # Enter/saida com a lista aberta: o destacado
+        exact = next((h for h in [NO_HUNT] + self.hunt_names if h.lower() == typed.lower()), None)
+        if exact is None and typed:
+            # um unico resultado do filtro vale como escolha
+            matches = self._hunt_matches(typed)
+            if len(matches) == 1:
+                exact = matches[0]
+        self._hunt_hide()
+        if exact is None:
+            # nome que nao existe: volta pra caca atual em vez de salvar lixo
+            current = self.cfg["hunt"] or NO_HUNT
+            self.hunt_box.set(current)
+            if typed and typed != NO_HUNT:
+                self.log(f"caça '{typed}' não está na lista")
+            return
+        self.hunt_box.set(exact)
+        if exact != (self.cfg["hunt"] or NO_HUNT):
+            self._hunt_set(exact)
+
+    def _prey_mode_picked(self, label):
+        mode = {b: a for a, b in PREY_MODES.items()}[label]
+        self._set_prey("mode", mode)
+        self._show_prey_gold(mode == "budget")
+
+    def _show_prey_gold(self, on):
+        # 'Até achar' nao tem limite diario: o campo de ouro so aparece no modo 'Até X de ouro por dia'
+        if on:
+            self.gold_label.grid(row=8, column=0, sticky="w", pady=6, padx=(0, 10))
+            self.gold_entry.grid(row=8, column=1, sticky="w", pady=6)
+        else:
+            self.gold_label.grid_remove()
+            self.gold_entry.grid_remove()
 
     def _save_prey_gold(self):
         try:
@@ -351,316 +456,6 @@ class App:
             self._set_loot("sell_at_items", value)
 
     # ------------------------------------------------------------- objetivos
-    def _build_goals(self, tab):
-        g = self.cfg["goals"]
-        ctk.CTkLabel(tab, text="Com objetivo, o bot vai pra caça mais fácil que tem a criatura. Terminou: caça padrão (aba Regras) "
-                               "ou treino. Ao lado de cada task: quanto do item dela está à venda no Market (comprando "
-                               "você também completa a task).", text_color=MUTED, wraplength=900, justify="left"
-                     ).pack(anchor="w", padx=8, pady=(6, 2))
-        self.goal_status = ctk.CTkLabel(tab, text="", text_color=ACCENT, anchor="w", justify="left", wraplength=840)
-        self.goal_status.pack(fill="x", padx=8)
-        inner = ctk.CTkTabview(tab, fg_color=PANEL_ALT, height=330, segmented_button_selected_color=ACCENT,
-                               segmented_button_selected_hover_color=ACCENT_HOVER, text_color=DARK_TEXT)
-        inner.pack(fill="both", expand=True, padx=2, pady=2)
-        inner.add("Tasks")
-        inner.add("Bestiary")
-        ctk.CTkLabel(inner.tab("Tasks"), text="Marque as tasks: o bot aceita (até 2), caça, entrega e segue a ordem.",
-                     text_color=MUTED, wraplength=840, justify="left").pack(anchor="w", padx=4)
-        self.task_vars = {}
-        box = ctk.CTkScrollableFrame(inner.tab("Tasks"), fg_color=BG)
-        box.pack(fill="both", expand=True)
-        done = self.memory.get("task_rows") or {}
-        chosen = set(g["tasks"])
-        self.diff_menus = {}
-        self.task_checks = {}           # nome -> (checkbox, texto base, item) pra mostrar o Market
-        self._task_market_view = None
-        for task in self.task_list:
-            var = tk.BooleanVar(value=task["name"] in chosen)
-            mark = "✓ " if done.get(task["name"]) == "done" else ("▶ " if done.get(task["name"]) == "active" else "")
-            text = f"{mark}{task['name']}  ·  {task['amount']} {task['item']}  ·  Lv {task['level']}"
-            self.task_checks[task["name"]] = (self._goal_row(box, task["name"], text, var, self._save_goal_tasks), text, task["item"])
-            self.task_vars[task["name"]] = var
-        ctk.CTkLabel(inner.tab("Bestiary"), text="Marque as criaturas: o bot caça onde ela aparece até completar e passa pra próxima.",
-                     text_color=MUTED, wraplength=840, justify="left").pack(anchor="w", padx=4)
-        self.beast_vars = {}
-        box = ctk.CTkScrollableFrame(inner.tab("Bestiary"), fg_color=BG)
-        box.pack(fill="both", expand=True)
-        progress = self.memory.get("bestiary") or {}
-        chosen = {c.casefold() for c in g["bestiary"]}
-        creatures = {}
-        for hunt in self.hunt_list:
-            for creature in hunt["creatures"]:
-                creatures.setdefault(creature, hunt)
-        self.creature_order = sorted(creatures, key=lambda c: (creatures[c]["level"], c))
-        for creature in self.creature_order:
-            hunt = creatures[creature]
-            var = tk.BooleanVar(value=creature.casefold() in chosen)
-            mark = "✓ " if goals.bestiary_done(creature, progress) else ""
-            self._goal_row(box, creature, f"{mark}{creature}  ·  {hunt['name']} (Lv {hunt['level']})", var,
-                           self._save_goal_beasts)
-            self.beast_vars[creature] = var
-
-    def _goal_row(self, box, key, text, var, on_save):
-        """Linha: checkbox + seletor de dificuldade (so' aparece marcada, pra a lista ficar leve)."""
-        row = ctk.CTkFrame(box, fg_color="transparent")
-        row.pack(fill="x", pady=1)
-
-        def toggled():
-            self._show_diff(row, key, var.get())
-            on_save()
-
-        cb = ctk.CTkCheckBox(row, text=text, variable=var, fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
-                             font=("Segoe UI", 11), command=toggled)
-        cb.pack(side="left")
-        if var.get():
-            self._show_diff(row, key, True)
-        return cb
-
-    def _show_diff(self, row, key, show):
-        menu = self.diff_menus.pop(key, None)
-        if menu is not None:
-            menu.destroy()
-        if not show:
-            return
-        current = (self.cfg["goals"].get("difficulty") or {}).get(key) or DEFAULT_DIFF
-        menu = ctk.CTkOptionMenu(row, values=[DEFAULT_DIFF] + config.DIFFICULTIES, width=88, height=22,
-                                 font=("Segoe UI", 10), fg_color=PANEL_ALT, button_color=BORDER,
-                                 button_hover_color=ACCENT_HOVER, dropdown_fg_color=PANEL_ALT, text_color=TEXT,
-                                 dynamic_resizing=False, command=lambda v, k=key: self._set_goal_diff(k, v))
-        menu.set(current)
-        menu.pack(side="right", padx=(4, 6))
-        self.diff_menus[key] = menu
-
-    def _set_goal_diff(self, key, value):
-        diffs = dict(self.cfg["goals"].get("difficulty") or {})
-        if value == DEFAULT_DIFF:
-            diffs.pop(key, None)
-        else:
-            diffs[key] = value
-        self.cfg["goals"]["difficulty"] = diffs
-        self.save()
-        self.log(f"dificuldade de {key}: {value}")
-
-    def _refresh_task_market(self):
-        watcher = getattr(self.runner, "market", None) if self.runner.running else None
-        data = watcher.task_market if watcher else {}
-        view = tuple(sorted((k, v["lowest"], v["qty"]) for k, v in data.items()))
-        if view == self._task_market_view:
-            return
-        self._task_market_view = view
-        for name, (cb, text, item) in self.task_checks.items():
-            info = data.get(item.casefold())
-            if info and info["qty"]:
-                cb.configure(text=f"{text}   ·   Market: {info['qty']} à venda a partir de {self._gold(info['lowest'])}")
-            else:
-                cb.configure(text=text)
-
-    def _save_goal_tasks(self):
-        self.cfg["goals"]["tasks"] = [t["name"] for t in self.task_list if self.task_vars[t["name"]].get()]
-        self.save()
-        self.log(f"tasks escolhidas: {', '.join(self.cfg['goals']['tasks']) or 'nenhuma'}")
-
-    def _save_goal_beasts(self):
-        self.cfg["goals"]["bestiary"] = [c for c in self.creature_order if self.beast_vars[c].get()]
-        self.save()
-        self.log(f"bestiary escolhido: {', '.join(self.cfg['goals']['bestiary']) or 'nenhum'}")
-
-    # ------------------------------------------------------------ imbuements (por personagem / equipamento)
-    def _build_imbuing(self, tab):
-        c = self.cfg["imbuing"]
-        try:
-            from .market import imbuements as market_imb
-            self.imbuing_data = market_imb.load()
-        except Exception:
-            self.imbuing_data = {"imbuements": [], "rules": {}}
-        ctk.CTkLabel(tab, text="Escolha o imbuement de cada equipamento. O bot aplica quando faltar, reaplica quando acabar "
-                               "e junta os materiais antes (Market e/ou caça onde mais dropa). Materiais escolhidos nunca são "
-                               "vendidos. Vem antes de tasks e bestiary.", text_color=MUTED, wraplength=900, justify="left"
-                     ).pack(anchor="w", padx=8, pady=(6, 2))
-
-        opts = ctk.CTkFrame(tab, fg_color=PANEL_ALT, corner_radius=6)
-        opts.pack(fill="x", padx=8, pady=4)
-        self.imbuing_on = tk.BooleanVar(value=bool(c["enabled"]))
-        ctk.CTkCheckBox(opts, text="Ligado", variable=self.imbuing_on, fg_color=ACCENT, hover_color=ACCENT_HOVER,
-                        text_color=TEXT, width=70, command=lambda: self._imbuing_set("enabled", self.imbuing_on.get())
-                        ).pack(side="left", padx=8, pady=8)
-        ends = {"default": "Ao terminar: caça padrão", "loop": "Ao terminar: continuar juntando"}
-        self._imbuing_menu(opts, list(ends.values()), ends.get(c["end"], ends["default"]), 210,
-                           lambda v: self._imbuing_set("end", {b: a for a, b in ends.items()}[v]))
-        self._imbuing_menu(opts, [DEFAULT_DIFF] + config.DIFFICULTIES, c["difficulty"] or DEFAULT_DIFF, 100,
-                           lambda v: self._imbuing_set("difficulty", "" if v == DEFAULT_DIFF else v))
-        self.imbuing_nums = {}
-        for key, label, suffix, width in (("prepare_hours", "preparar com", "h", 36), ("buy_pct", "comprar até", "% do justo", 40),
-                                          ("daily_budget", "até", "/dia", 80)):
-            ctk.CTkLabel(opts, text=label, text_color=TEXT).pack(side="left", padx=(8, 2))
-            var = tk.StringVar(value=str(c[key]))
-            e = ctk.CTkEntry(opts, textvariable=var, width=width, fg_color=BG)
-            e.pack(side="left")
-            e.bind("<FocusOut>", lambda ev, k=key, v=var: self._imbuing_num(k, v))
-            e.bind("<Return>", lambda ev, k=key, v=var: self._imbuing_num(k, v))
-            ctk.CTkLabel(opts, text=suffix, text_color=MUTED).pack(side="left", padx=(2, 0))
-
-        add = ctk.CTkFrame(tab, fg_color=PANEL_ALT, corner_radius=6)
-        add.pack(fill="x", padx=8, pady=4)
-        self.imbuing_add = {}
-        for key, width in (("member", 110), ("slot", 170), ("imbuement", 130), ("tier", 90), ("source", 250)):
-            self.imbuing_add[key] = self._imbuing_menu(add, ["-"], "-", width, lambda v, k=key: self._imbuing_pick(k))
-        btn(add, "Adicionar", self._imbuing_add_target, primary=True, width=90).pack(side="left", padx=6, pady=8)
-        self.imbuing_hint = ctk.CTkLabel(tab, text="", text_color=MUTED, anchor="w")
-        self.imbuing_hint.pack(fill="x", padx=10)
-        self.imbuing_list = ctk.CTkScrollableFrame(tab, fg_color=BG)
-        self.imbuing_list.pack(fill="both", expand=True, padx=8, pady=4)
-        self.imbuing_rows = {}
-        self._imbuing_party = None
-        self._imbuing_view = None
-        self._imbuing_load_party()
-        self._imbuing_draw()
-
-    def _imbuing_menu(self, parent, values, current, width, command):
-        m = ctk.CTkOptionMenu(parent, values=values, width=width, command=command, fg_color=BG, button_color=BORDER,
-                              button_hover_color=ACCENT_HOVER, dropdown_fg_color=PANEL_ALT, text_color=TEXT,
-                              dynamic_resizing=False)
-        m.set(current)
-        m.pack(side="left", padx=(6, 0), pady=8)
-        return m
-
-    def _imbuing_set(self, key, value):
-        self.cfg["imbuing"][key] = value
-        self.save()
-        self.log(f"imbuements: {key} = {value}")
-
-    def _imbuing_num(self, key, var):
-        try:
-            value = max(0, int(float(var.get().replace(".", "").replace(",", "."))))
-        except ValueError:
-            var.set(str(self.cfg["imbuing"][key]))
-            return
-        if value != self.cfg["imbuing"][key]:
-            self._imbuing_set(key, value)
-
-    def _imbuing_load_party(self):
-        """Set da party lido pelo bot (memory 'imbuing_party'); sem leitura ainda -> menus vazios com aviso."""
-        engine = self.runner.engine if self.runner.running else None
-        mem = engine.memory if engine and engine.memory else Memory(MEMORY_PATH)
-        party = mem.get("imbuing_party") or []
-        if party == self._imbuing_party:
-            return
-        self._imbuing_party = party
-        names = [m["name"] for m in party]
-        menu = self.imbuing_add["member"]
-        menu.configure(values=names or ["-"])
-        if menu.get() not in names:
-            menu.set(names[0] if names else "-")
-        self.imbuing_hint.configure(text="" if party else "Inicie o bot: ele lê os equipamentos da party e os menus se preenchem.")
-        self._imbuing_pick("member")
-
-    def _imbuing_slots(self, member):
-        m = next((m for m in self._imbuing_party or [] if m["name"] == member), None)
-        return m["slots"] if m else []
-
-    def _imbuing_pick(self, changed):
-        """Menus em cascata: personagem -> equipamento -> imbuement compativel -> nivel / fonte."""
-        a = self.imbuing_add
-        slots = self._imbuing_slots(a["member"].get())
-        if changed == "member":
-            labels = [f"{imbuing.SLOT_LABELS.get(s['slot'], s['slot'])} · {s['item']}" for s in slots]
-            a["slot"].configure(values=labels or ["-"])
-            a["slot"].set(labels[0] if labels else "-")
-        if changed in ("member", "slot"):
-            slot = self._imbuing_slot_pick(slots)
-            defs = imbuing.compatible(self.imbuing_data, slot["kind"]) if slot else []
-            names = [d["name"] for d in defs]
-            a["imbuement"].configure(values=names or ["-"])
-            if a["imbuement"].get() not in names:
-                a["imbuement"].set(names[0] if names else "-")
-            a["tier"].configure(values=imbuing.TIER_NAMES)
-            if a["tier"].get() not in imbuing.TIER_NAMES:
-                a["tier"].set("Powerful")
-            a["source"].configure(values=list(imbuing.SOURCES.values()))
-            if a["source"].get() not in imbuing.SOURCES.values():
-                a["source"].set(imbuing.SOURCES["auto"])
-
-    def _imbuing_slot_pick(self, slots):
-        label = self.imbuing_add["slot"].get()
-        return next((s for s in slots if label == f"{imbuing.SLOT_LABELS.get(s['slot'], s['slot'])} · {s['item']}"), None)
-
-    def _imbuing_add_target(self):
-        a = self.imbuing_add
-        slot = self._imbuing_slot_pick(self._imbuing_slots(a["member"].get()))
-        d = next((d for d in self.imbuing_data["imbuements"] if d["name"] == a["imbuement"].get()), None)
-        if not slot or not d:
-            self.imbuing_hint.configure(text="Escolha personagem, equipamento e imbuement.", text_color=DANGER)
-            return
-        target = {"member": a["member"].get(), "slot": slot["slot"], "imbuement": d["id"],
-                  "tier": imbuing.TIER_NAMES.index(a["tier"].get()),
-                  "source": {v: k for k, v in imbuing.SOURCES.items()}[a["source"].get()]}
-        targets = [t for t in self.cfg["imbuing"]["targets"] if imbuing.target_key(t) != imbuing.target_key(target)]
-        same_slot = [t for t in targets if t["member"] == target["member"] and t["slot"] == target["slot"]]
-        if len(same_slot) >= slot["cap"]:
-            self.imbuing_hint.configure(text=f"{slot['item']} tem {slot['cap']} slot(s): remova uma meta dele antes.",
-                                        text_color=DANGER)
-            return
-        targets.append(target)
-        self.cfg["imbuing"]["targets"] = targets
-        self.save()
-        self.imbuing_hint.configure(text="", text_color=MUTED)
-        self.log(f"imbuements: meta {self._imbuing_label(target)}")
-        self._imbuing_draw()
-
-    def _imbuing_remove(self, key):
-        self.cfg["imbuing"]["targets"] = [t for t in self.cfg["imbuing"]["targets"] if imbuing.target_key(t) != key]
-        self.save()
-        self.log(f"imbuements: meta removida ({key.replace('|', ' · ')})")
-        self._imbuing_draw()
-
-    def _imbuing_label(self, t):
-        d = imbuing.definition(self.imbuing_data, t["imbuement"])
-        source = {"auto": "automático", "hunt": "caçar", "market": "comprar"}.get(t.get("source"), "automático")
-        return (f"{t['member']} · {imbuing.SLOT_LABELS.get(t['slot'], t['slot'])} · "
-                f"{imbuing.TIER_NAMES[t['tier']]} {d['name'] if d else t['imbuement']} · {source}")
-
-    def _imbuing_draw(self):
-        for child in self.imbuing_list.winfo_children():
-            child.destroy()
-        self.imbuing_rows = {}
-        self._imbuing_view = None
-        targets = self.cfg["imbuing"]["targets"]
-        if not targets:
-            ctk.CTkLabel(self.imbuing_list, text="Nenhuma meta. Escolha acima e clique em Adicionar.", text_color=MUTED
-                         ).pack(anchor="w", padx=6, pady=6)
-            return
-        for t in targets:
-            key = imbuing.target_key(t)
-            row = ctk.CTkFrame(self.imbuing_list, fg_color=PANEL_ALT, corner_radius=6)
-            row.pack(fill="x", pady=2)
-            ctk.CTkLabel(row, text=self._imbuing_label(t), text_color=TEXT, anchor="w",
-                         font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=8, pady=(6, 0))
-            info = ctk.CTkLabel(row, text="aguardando a leitura do jogo", text_color=MUTED, anchor="w", justify="left")
-            info.pack(anchor="w", padx=8, pady=(0, 6))
-            btn(row, "Remover", lambda k=key: self._imbuing_remove(k), width=70).place(relx=1.0, x=-8, y=6, anchor="ne")
-            self.imbuing_rows[key] = info
-
-    def _imbuing_refresh(self):
-        self._imbuing_load_party()
-        snap = self.runner.snapshot if self.runner.running else None
-        rows = (snap or {}).get("imbuing") or []
-        view = repr(rows)
-        if view == self._imbuing_view:
-            return
-        self._imbuing_view = view
-        for r in rows:
-            info = self.imbuing_rows.get(r["key"])
-            if not info:
-                continue
-            state = r["state"]
-            if r["remaining"] is not None:
-                h = r["remaining"]
-                state = f"{state} · restam {int(h)}h{int(h % 1 * 60):02d} de uso"
-            mats = "   ".join(f"{name} {have}/{need}{' ✓' if have >= need else ''}" for name, have, need in r["materials"])
-            color = OK if r["state"] == "ok" else (ACCENT if r["state"] in ("preparar", "aplicar") else DANGER)
-            info.configure(text=f"{r['item'] or '-'}: {state}\n{mats}", text_color=color)
-
-    # ---------------------------------------------------------------- market
     def _build_market(self, tab):
         m = self.cfg["market"]
         style = ttk.Style()
@@ -1318,13 +1113,6 @@ class App:
         self.credentials.remove(name)
         self.log(f"login removido: {name}")
         self._refresh_logins()
-
-    # ------------------------------------------------------------------- log
-    def _build_log(self, tab):
-        self.log_box = ctk.CTkTextbox(tab, fg_color=BG, text_color=TEXT, font=("Consolas", 10), state="disabled")
-        self.log_box.pack(fill="both", expand=True, padx=4, pady=4)
-        folder = os.path.join(ROOT, "logs")
-        btn(tab, "Abrir pasta dos logs", lambda: os.startfile(folder) if os.path.isdir(folder) else None).pack(anchor="e", padx=4, pady=(0, 4))
 
     # ------------------------------------------------------------- atualizar
     def _startup_update_check(self):
