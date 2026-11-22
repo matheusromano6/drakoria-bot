@@ -679,8 +679,28 @@ class Engine:
         acc.open_picker()
         try:
             builder.apply_for_hunt(acc.page, target, self.log)
+        except Exception:
+            self._builder_snapshot(acc)
+            raise
         finally:
             acc.close_windows()
+
+    def _builder_snapshot(self, acc):
+        """Falha no builder: salva foto + botoes visiveis em logs/ (pra diagnosticar sem ver a tela)."""
+        try:
+            import os
+            from .paths import app_dir
+            folder = os.path.join(app_dir(), "logs")
+            os.makedirs(folder, exist_ok=True)
+            stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            acc.page.screenshot(path=os.path.join(folder, f"builder_erro_{stamp}.png"))
+            texts = acc.page.evaluate("""() => [...document.querySelectorAll('button, [role=tab]')]
+                .filter(b => b.offsetParent).map(b => (b.innerText || b.title || '').trim().replace(/\\s+/g, ' ').slice(0, 60))""")
+            with open(os.path.join(folder, f"builder_erro_{stamp}.txt"), "w", encoding="utf-8") as file:
+                file.write("\n".join(t for t in texts if t))
+            self.log(f"builder: diagnóstico salvo em logs/builder_erro_{stamp}.png")
+        except Exception as error:
+            self.log(f"builder: não consegui salvar o diagnóstico ({error})")
 
     def _start(self, acc, target, diff=None):
         diff = diff or self.cfg["difficulty"]
