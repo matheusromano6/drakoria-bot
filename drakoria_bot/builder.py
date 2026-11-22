@@ -3,17 +3,29 @@ personagem. Só clica 'Aplicar no Helper' quando o botao esta habilitado (o jogo
 combo' quando ja esta igual)."""
 import time
 
+from . import selectors as S
+
 MEMBERS = ["MRKina", "MRPally", "MRSorc", "MRDruid"]
 TABS = ["Magias", "Curas"]
 
 
-def _pick_hunt(page, hunt):
-    # JS direto no card: a grade se redesenha e o clique do Playwright fica bloqueado (igual account.start_hunt)
-    found = page.evaluate("""(name) => { const t = [...document.querySelectorAll('.hw-root .hw-tile')].find(x =>
-        (x.querySelector('strong')?.innerText || '').trim().toLowerCase() === name.toLowerCase());
-        if (!t) return false; t.scrollIntoView({block: 'center'}); t.querySelector('.hw-tile-main')?.click(); return true; }""", hunt)
-    if not found:
-        raise RuntimeError(f"caça '{hunt}' não está no Builder")
+def _pick_hunt(page, hunt, wait=6):
+    # a busca da janela Escolher Hunt pode estar com outro nome (ex.: busca antiga 'Rotworm Cave'): digita o nome
+    # da caça (mesmo evento 'input' que o digitar do usuario) e so' depois clica no card
+    page.evaluate("""([sel, text]) => { const box = document.querySelector(sel); if (!box) return; box.focus(); box.value = text;
+        box.dispatchEvent(new Event('input', {bubbles: true})); box.dispatchEvent(new Event('change', {bubbles: true})); }""",
+                  [S.PICKER + " " + S.PICKER_SEARCH, hunt])
+    end = time.time() + wait
+    while True:
+        # JS direto no card: a grade se redesenha e o clique do Playwright fica bloqueado (igual account.start_hunt)
+        found = page.evaluate("""(name) => { const t = [...document.querySelectorAll('.hw-root .hw-tile')].find(x =>
+            (x.querySelector('strong')?.innerText || '').trim().toLowerCase() === name.toLowerCase());
+            if (!t) return false; t.scrollIntoView({block: 'center'}); t.querySelector('.hw-tile-main')?.click(); return true; }""", hunt)
+        if found:
+            break
+        if time.time() > end:
+            raise RuntimeError(f"caça '{hunt}' não aparece na lista do Builder")
+        time.sleep(0.4)
     time.sleep(1.0)
 
 
@@ -65,7 +77,8 @@ def apply_for_hunt(page, hunt, log=print):
     _open(page)
     for member in MEMBERS:
         result[member] = {}
-        _click_visible(page.locator(".tibia-window-body button", has_text=member), f"personagem {member}")
+        # os botoes dos personagens da janela Builder sao 'tibia-button small' (o do equipamento da tela e' outro)
+        _click_visible(page.locator("button.tibia-button", has_text=member), f"personagem {member}")
         time.sleep(0.8)
         for tab in TABS:
             _click_visible(page.locator("button", has_text=tab), f"aba {tab} de {member}")
