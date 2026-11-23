@@ -366,6 +366,11 @@ class App:
         self.exercise_target.pack(side="left")
         self.exercise_target.bind("<FocusOut>", lambda e: self._save_exercise_target())
         self.exercise_target.bind("<Return>", lambda e: self._save_exercise_target())
+        # warzone diaria (Quests > Warzone I-II-III), depois do boss: 1x por dia por conta
+        self.warzone_var = tk.BooleanVar(value=bool((self.cfg.get("warzone") or {}).get("enabled", True)))
+        ctk.CTkCheckBox(grid, text="Warzone diária: fazer Warzone I-II-III todo dia (depois do boss)", variable=self.warzone_var,
+                        fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
+                        command=lambda: self._set_warzone(self.warzone_var.get())).grid(row=14, column=0, columnspan=2, sticky="w", pady=6)
         self.relogin_var = tk.BooleanVar(value=bool(self.cfg["relogin"]))
         ctk.CTkCheckBox(grid, text="Relogin automático", variable=self.relogin_var, fg_color=ACCENT, hover_color=ACCENT_HOVER,
                         text_color=TEXT, command=lambda: self._set("relogin", self.relogin_var.get())
@@ -380,6 +385,10 @@ class App:
 
     def _set_builder(self, on):
         self.cfg.setdefault("builder", {})["enabled"] = bool(on)
+        self.save()
+
+    def _set_warzone(self, on):
+        self.cfg.setdefault("warzone", {})["enabled"] = bool(on)
         self.save()
 
     def _set_atlas(self, on):
