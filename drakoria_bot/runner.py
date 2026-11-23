@@ -50,6 +50,23 @@ class Runner:
         chosen = set((self.cfg.get("goals") or {}).get("tasks") or [])
         return [t["item"] for t in load_tasks() if t["name"] in chosen]
 
+    def _smoke_test(self, accounts, memory):
+        """Depois de conectar: le uma conta de verdade e confere a versao (teste de fumaca da atualizacao)."""
+        from . import VERSION
+        try:
+            if accounts:
+                accounts[0].read()
+            state = f"{len(accounts)} conta(s) lida(s)"
+        except Exception as error:
+            self.log(f"atenção: não consegui ler a conta depois de conectar ({error})")
+            return
+        last = memory.get("last_version")
+        if last and last != VERSION:
+            self.log(f"atualizado para v{VERSION} (era v{last}): conexão ok, {state}")
+        else:
+            self.log(f"conexão ok (v{VERSION}): {state}")
+        memory.set("last_version", VERSION)
+
     def _run(self):
         cdp = self.cfg["cdp_url"]
         # o navegador configurado precisa ter a aba do jogo. Se a porta esta fechada OU aberta sem nenhuma aba do
@@ -82,6 +99,7 @@ class Runner:
                                  credentials=Credentials(os.path.join(ROOT, "credentials.json")),
                                  memory=memory)
             self.engine.notify = lambda title, text: self.notify and self.notify(title, text)
+            self._smoke_test(accounts, memory)
             self.log("bot iniciado")
             self.engine.run(self.stop_event)
         except Exception as error:

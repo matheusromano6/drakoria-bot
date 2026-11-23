@@ -1,6 +1,7 @@
 ﻿"""Bot do Drakoria Idle (jogo.drakoriaidle.com.br) pra rodar dentro do IdleDeck."""
 
-VERSION = "1.16.2"
+VERSION = "1.17.0"
+
 
 
 

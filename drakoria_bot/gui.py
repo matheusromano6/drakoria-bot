@@ -2,6 +2,7 @@
 So' redesenha o que mudou; fechar (X) pergunta se guarda na bandeja ou fecha de vez."""
 import datetime
 import importlib
+import json
 import os
 import queue
 import sys
@@ -111,6 +112,25 @@ class App:
     def save(self):
         config.save(CONFIG_PATH, self.cfg)
 
+    def copy_diagnostic(self):
+        """Copia um relatorio pra colar no suporte: versao, configuracao sem senhas e as ultimas linhas do log."""
+        from . import housekeeping
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        try:
+            with open(os.path.join(ROOT, "logs", f"drakoria_{today}.log"), encoding="utf-8") as file:
+                log_lines = file.read().splitlines()
+        except OSError:
+            log_lines = []
+        try:
+            with open(os.path.join(ROOT, "memory.json"), encoding="utf-8") as file:
+                memory_data = json.load(file)
+        except (OSError, ValueError):
+            memory_data = {}
+        text = housekeeping.diagnostic(VERSION, self.cfg, memory_data, log_lines)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        self.log("diagnóstico copiado: cole no suporte")
+
     def call_ui(self, fn):
         self.ui_queue.put(fn)
 
@@ -149,6 +169,7 @@ class App:
         ctk.CTkLabel(top, text="DRAKORIA BOT", font=("Segoe UI", 16, "bold"), text_color=ACCENT).pack(side="left")
         self.update_btn = btn(top, "Atualizar", self.start_update, width=80)
         self.update_btn.pack(side="right")
+        btn(top, "Diagnóstico", self.copy_diagnostic, width=100).pack(side="right", padx=4)
         self.toggle_btn = btn(top, "Iniciar", self.toggle, primary=True, width=80)
         self.toggle_btn.pack(side="right", padx=6)
         self.status = ctk.CTkLabel(bar, text="● Parado", font=("Segoe UI", 12, "bold"), text_color=MUTED, anchor="w")
@@ -1231,6 +1252,10 @@ class App:
         bar.place(relx=0.5, rely=0.53, anchor="center")
 
         def work():
+            from . import housekeeping
+            stamp = datetime.datetime.now().strftime("%Y%m%d%H%M")
+            copied = housekeeping.backup_state(ROOT, os.path.join(ROOT, "backup", f"antes_v{VERSION}_{stamp}"))
+            self.log(f"backup antes de atualizar: {', '.join(copied) or 'nada'}")
             ok = updater.apply_update(info["asset_url"], self.log, lambda f: self.call_ui(lambda: bar.set(f)),
                                       relaunch_args="--iniciar" if running else "")
             self.call_ui(lambda: self.root.after(1500, self.quit) if ok else (overlay.destroy(), setattr(self, "updating", False)))

@@ -767,6 +767,15 @@ class Account:
         self.close_windows()
         return result, (ready[-1] if result == "iniciado" and ready else None)
 
+    def boss_remaining(self, boss):
+        """(ainda na fila?, quantos bosses prontos faltam). Usado pelo progresso e pelo alerta de fila parada."""
+        self._open_bosses_window()
+        rows = self._boss_rows()
+        status = dict(rows).get(boss)
+        remaining = sum(1 for _, s in rows if "cooldown" not in s.lower())
+        self.close_windows()
+        return (status is not None and "cooldown" not in status.lower()), remaining
+
     def boss_pending(self, boss):
         """True enquanto o boss ainda esta pronto/na fila (nao foi feito). False = o ultimo da fila terminou."""
         self._open_bosses_window()

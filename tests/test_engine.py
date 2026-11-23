@@ -76,6 +76,10 @@ class FakeAccount:
         self._call("boss_pending", boss)
         return getattr(self, "boss_still", False)
 
+    def boss_remaining(self, boss):
+        self._call("boss_pending", boss)            # mesma chamada: a checagem da fila
+        return getattr(self, "boss_still", False), 1 if getattr(self, "boss_still", False) else 0
+
     def read_bestiary(self):
         self._call("read_bestiary")
         return dict(getattr(self, "bestiary", {}))

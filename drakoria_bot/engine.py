@@ -53,6 +53,8 @@ class Engine:
             self.log(f"retomando do ponto salvo: {s.get('phase')}, caça {s.get('hunt') or '-'}, "
                      f"objetivo: {s.get('goal') or '-'}")
         self.notify = None              # aviso na bandeja (a interface liga)
+        self._boss_left, self._boss_left_at, self._boss_alerted = None, 0, False
+        self._csv_at = {}
         self.timings = {}               # desempenho: tempos das etapas (resumo no log a cada 10 min)
         self.timing_report_at = self.clock()
         try:
@@ -192,6 +194,12 @@ class Engine:
 
     def run(self, stop):
         last_refresh = None
+        if self.memory:
+            from . import housekeeping, paths
+            try:
+                housekeeping.weekly_report(os.path.join(paths.app_dir(), "logs"), self.memory, self.clock)
+            except Exception as error:
+                self.log(f"relatório semanal: {error}")
         while not stop.is_set():
             # a lista de paginas muda pouco: relê a cada 10 s (ou sempre que nao ha conta)
             now = self.clock()
@@ -243,6 +251,7 @@ class Engine:
             if isinstance(name, str) and name:
                 self.hunt_known = current = name
         self.snapshot.update(state=st, phase=st.phase, hunt=current or (st.dest if st.phase == "city" else None))
+        self._csv_xp(acc, st)
         row = self._row(acc, st)
         row.update(phase=st.phase, gold=st.gold, loot=st.loot_items, target=current or (st.dest if st.phase == "city" else None),
                    auto=self.auto_sell(st), premium=st.premium)
@@ -538,6 +547,24 @@ class Engine:
         else:
             self.log(f"auto boss: {status} (volta a tentar amanhã)")
 
+    def _boss_progress(self, remaining, now):
+        """Progresso da fila (quantos prontos faltam) e alerta se ela nao andar por 20 min."""
+        if remaining != self._boss_left:
+            self._boss_left, self._boss_left_at, self._boss_alerted = remaining, now, False
+            self.log(f"auto boss: faltam {remaining} boss(es) prontos na fila")
+        elif not self._boss_alerted and now - self._boss_left_at > 1200:
+            self._boss_alerted = True
+            self._alert(f"fila de bosses parada há 20 min ({remaining} faltando): confira o jogo")
+
+    def _csv_xp(self, acc, st):
+        """XP/h e lucro/h de cada conta a cada 10 min (logs/xp_AAAA-MM-DD.csv)."""
+        from . import housekeeping, paths
+        key = st.name or "conta"
+        now = self.clock()
+        if now - self._csv_at.get(key, 0) >= 600:
+            self._csv_at[key] = now
+            housekeeping.csv_row(os.path.join(paths.app_dir(), "logs"), key, st.xp_hour, st.profit_hour, self.clock)
+
     def _save_boss(self):
         """Guarda a fila de bosses em andamento: se o bot cair ou for atualizado, ela continua (nao volta pro treino)."""
         if self.memory:
@@ -548,7 +575,8 @@ class Engine:
         if self.boss_last and acc is self.accounts[0] and now - self.boss_checked >= 60:
             self.boss_checked = now
             try:
-                pending = acc.boss_pending(self.boss_last)
+                pending, remaining = acc.boss_remaining(self.boss_last)
+                self._boss_progress(remaining, now)
             except Exception as error:
                 self._fail("auto boss", error)
                 return
@@ -558,7 +586,8 @@ class Engine:
                 self._save_boss()
         if self.boss_last is None:
             self.boss_until = 0
-        self.snapshot["goal"] = f"auto boss rodando (até {self.boss_last or '…'})"
+        left = f", faltam {self._boss_left}" if self._boss_left is not None else ""
+        self.snapshot["goal"] = f"auto boss rodando (até {self.boss_last or '…'}{left})"
 
     def _swap_prey(self, acc, slot, gold, hunt):
         """Prey ativa de criatura fora da caça: 'Trocar lista' (ouro) se a regra de gasto deixar.

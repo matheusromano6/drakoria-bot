@@ -118,3 +118,24 @@ def load(path):
 def save(path, config):
     with open(path, "w", encoding="utf-8") as file:
         json.dump(config, file, ensure_ascii=False, indent=2)
+
+
+# Perfis de regras: um conjunto salvo (ex.: 'farm', 'boss', 'treino') que pode ser aplicado de uma vez.
+PROFILE_KEYS = ["hunt", "exercise", "atlas", "stamina", "boss", "gold_reserve", "builder"]
+
+
+def save_profile(cfg, name):
+    """Guarda as regras atuais (PROFILE_KEYS) como perfil 'name' dentro de cfg['profiles']."""
+    cfg.setdefault("profiles", {})[name] = {k: copy.deepcopy(cfg[k]) for k in PROFILE_KEYS if k in cfg}
+    return cfg
+
+
+def load_profile(cfg, name):
+    """Aplica o perfil 'name' nas regras. Devolve False se ele nao existe."""
+    profile = (cfg.get("profiles") or {}).get(name)
+    if profile is None:
+        return False
+    for key, value in profile.items():
+        if key in PROFILE_KEYS:
+            cfg[key] = copy.deepcopy(value)
+    return True
