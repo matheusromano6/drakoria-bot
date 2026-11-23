@@ -289,8 +289,9 @@ class Engine:
         if now < self.boss_until:
             self._boss_hold(acc, now)
             return
-        if acc is self.accounts[0] and st.phase in ("hunting", "city", "house", "house_idle") and self._boss_due(now):
-            self._auto_boss(acc, now)
+        # cada conta faz o boss do dia (1x), em qualquer fase: boss nao gasta stamina, entao nao espera o treino
+        if st.phase in ("hunting", "city", "house", "house_idle") and self._boss_due(now, st.name or "conta"):
+            self._auto_boss(acc, now, st.name or "conta")
             return
 
         # 4) loot: protecao de boss sempre ligada; Auto Sell conforme Premium/escolha
@@ -506,25 +507,27 @@ class Engine:
         key = st.name or f"conta {number}"
         return self.snapshot.setdefault("accounts", {}).setdefault(key, {})
 
-    def _boss_due(self, now):
+    def _boss_due(self, now, name="conta"):
         cfg = self.cfg.get("boss") or {}
         if not cfg.get("enabled", True):
             return False
         when = datetime.datetime.fromtimestamp(now)
         hour, minute = (int(x) for x in str(cfg.get("time", "00:01")).split(":"))
-        done = self.memory.get("boss_day") if self.memory else getattr(self, "_boss_day", None)
-        return when.hour * 60 + when.minute >= hour * 60 + minute and done != when.date().isoformat()
+        days = (self.memory.get("boss_days") or {}) if self.memory else getattr(self, "_boss_days", {})
+        return when.hour * 60 + when.minute >= hour * 60 + minute and days.get(name) != when.date().isoformat()
 
-    def _auto_boss(self, acc, now):
+    def _auto_boss(self, acc, now, name="conta"):
         cfg = self.cfg.get("boss") or {}
         day = datetime.datetime.fromtimestamp(now).date().isoformat()
         result = self._do("auto boss", acc.start_auto_boss)
         if result is None:
             return  # erro: tenta de novo na proxima volta
         status, last = result if isinstance(result, tuple) else (result, None)
+        days = dict((self.memory.get("boss_days") if self.memory else getattr(self, "_boss_days", {})) or {})
+        days[name] = day
         if self.memory:
-            self.memory.set("boss_day", day)
-        self._boss_day = day
+            self.memory.set("boss_days", days)
+        self._boss_days = days
         if status == "iniciado":
             # segue a fila ate o ULTIMO boss terminar; 'max_hours' so' e' a rede de seguranca
             self.boss_last = last
