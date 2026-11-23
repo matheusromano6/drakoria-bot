@@ -408,8 +408,12 @@ class Engine:
         elif st.phase == "hunting":
             diff = self.target_difficulty(st)
             wrong_hunt = current and current.casefold() != target.casefold()
+            # o jogo mostra 'Normal · Ato II': compara so' a dificuldade e o ato (senao troca em loop)
+            shown_diff, _, shown_act = (st.difficulty or "").partition("·")
+            act = (self.cfg.get("act") or "").strip()
+            wrong_act = bool(act and shown_act.strip() and shown_act.strip().casefold() != act.casefold())
             wrong_diff = current and not wrong_hunt and st.difficulty and \
-                st.difficulty.casefold() != diff.casefold()
+                (shown_diff.strip().casefold() != diff.casefold() or wrong_act)
             if wrong_hunt or wrong_diff:
                 self.mismatch += 1
                 if self.mismatch >= 2:          # 2 leituras seguidas: troca de caça/dificuldade
