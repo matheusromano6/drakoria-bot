@@ -21,6 +21,7 @@ DEFAULTS = {
     # Warzone diaria (Quests > Warzone I-II-III): 1x por dia por conta, depois do boss. max_minutes = rede de seguranca
     "warzone": {"enabled": True, "max_minutes": 30},
     "difficulty": "Normal",               # Insano+ pede level (250/450/700/1000)
+    "act": "Ato I",                       # "Ato I" | "Ato II": aba da janela de caça (cada ato tem suas dificuldades)
     "loot": {
         "auto_sell": "auto",              # "auto" = liga se a conta for Premium | "on" | "off"
         "sell_at_items": 30,              # sem Auto Sell: 'Vender tudo agora' com a Loot Pouch nesse numero de itens
@@ -123,7 +124,7 @@ def save(path, config):
 
 
 # Perfis de regras: um conjunto salvo (ex.: 'farm', 'boss', 'treino') que pode ser aplicado de uma vez.
-PROFILE_KEYS = ["hunt", "exercise", "atlas", "stamina", "boss", "gold_reserve", "builder"]
+PROFILE_KEYS = ["hunt", "act", "exercise", "atlas", "stamina", "boss", "gold_reserve", "builder"]
 
 
 def save_profile(cfg, name):

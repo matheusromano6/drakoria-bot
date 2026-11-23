@@ -57,13 +57,13 @@ class FakeAccount:
         self._call("best_hunt")
         return self.best
 
-    def start_hunt(self, hunt, difficulty):
+    def start_hunt(self, hunt, difficulty, act=None):
         self._call("start_hunt", hunt, difficulty)
         self.st.phase = "hunting"
         self.st.difficulty = difficulty
         self.st.tracker = list(next((h["creatures"] for h in HUNTS if h["name"] == hunt), []))
 
-    def change_difficulty(self, diff):
+    def change_difficulty(self, diff, act=None):
         self._call("change_difficulty", diff)
         self.st.difficulty = diff
         return True

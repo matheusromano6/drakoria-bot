@@ -420,7 +420,7 @@ class Engine:
                     else:
                         # so' a dificuldade: ALTERAR (topo), sem trocar a caça e sem rodar o Builder de novo
                         self.log(f"{current} em {st.difficulty}, mas a escolhida e' {diff}: trocando a dificuldade")
-                        if self._do("dificuldade", acc.change_difficulty, diff):
+                        if self._do("dificuldade", acc.change_difficulty, diff, self.cfg.get("act")):
                             self.log(f"dificuldade trocada para {diff}")
             else:
                 self.mismatch = 0
@@ -967,7 +967,7 @@ class Engine:
         diff = diff or self.cfg["difficulty"]
         if (self.cfg.get("builder") or {}).get("enabled", True):
             self._do("builder", lambda: self._apply_builder(acc, target))
-        if self._do("iniciar caça", acc.start_hunt, target, diff):
+        if self._do("iniciar caça", acc.start_hunt, target, diff, self.cfg.get("act")):
             self.cooldown["iniciar caça"] = self.clock() + 20      # o jogo demora uns segundos pra mostrar a caça
             self.hunt_known = target
             self.log(f"caçando {target} ({diff})")

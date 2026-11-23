@@ -29,7 +29,6 @@ TEXT, MUTED, ACCENT, ACCENT_HOVER, DANGER, OK = "#e8edf2", "#8c98a4", "#e0a526",
 DARK_TEXT = "#1a1200"
 PHASES = {"hunting": "Caçando", "house": "Treinando (house)", "house_idle": "Na house", "city": "Na cidade", "login": "Deslogado",
           "error": "Erro / reconectando", "unknown": "?", "-": "-"}
-NO_HUNT = "Nenhuma (só treinar)"
 DEFAULT_DIFF = "Padrão"
 PREY_MODES = {"budget": "Até X de ouro por dia", "until_found": "Até achar (sem limite diário)"}
 AUTO_SELL = {"auto": "Automático (liga se for Premium)", "on": "Sempre ligado", "off": "Desligado (vender pelo bot)"}
@@ -263,6 +262,7 @@ class App:
 
     # ---------------------------------------------------------------- regras
     def _build_rules(self, tab):
+        self._build_hunt_picker(tab)
         grid = ctk.CTkFrame(tab, fg_color="transparent")
         grid.pack(fill="x", padx=8, pady=8)
         grid.columnconfigure(1, weight=1)
@@ -280,22 +280,6 @@ class App:
             m.grid(row=r, column=1, sticky="ew", pady=6)
             return m
 
-        label(1, "Caça")
-        # digitavel: a lista filtra conforme se digita; Enter/saida confirma (nome fora da lista = volta ao atual)
-        self.hunt_box = ctk.CTkComboBox(grid, values=[NO_HUNT] + self.hunt_names, width=240, fg_color=PANEL_ALT,
-                                        button_color=BORDER, button_hover_color=ACCENT_HOVER,
-                                        dropdown_fg_color=PANEL_ALT, text_color=TEXT,
-                                        command=lambda v: self._hunt_set(v))
-        self.hunt_box.set(self.cfg["hunt"] or NO_HUNT)
-        self.hunt_box.grid(row=1, column=1, sticky="ew", pady=6)
-        entry = self.hunt_box._entry
-        self._hunt_pop = None
-        self._hunt_lb = None
-        entry.bind("<KeyRelease>", lambda e: self._hunt_filter() if e.keysym not in ("Return", "Escape") else None)
-        entry.bind("<Return>", lambda e: self._hunt_confirm())
-        entry.bind("<Down>", lambda e: self._hunt_focus_list())
-        entry.bind("<Escape>", lambda e: self._hunt_hide())
-        entry.bind("<FocusOut>", lambda e: self.after(200, self._hunt_confirm))
         label(2, "Dificuldade")
         menu(2, config.DIFFICULTIES, self.cfg["difficulty"], lambda v: self._set("difficulty", v))
         label(3, "Auto Sell")
@@ -437,81 +421,101 @@ class App:
         self.save()
         self.log(f"regra: prey.{key} = {value}")
 
-    def _hunt_set(self, value):
-        self._set("hunt", "" if value == NO_HUNT else value)
+    # ------------------------------------------------------------ escolha de caça (aba Regras)
+    def _build_hunt_picker(self, tab):
+        """Caça + Ato no topo da aba: digita e a lista filtra na hora; clicar (ou Enter) escolhe; ja aparece a atual."""
+        box = ctk.CTkFrame(tab, fg_color=PANEL_ALT, corner_radius=8)
+        box.pack(fill="x", padx=8, pady=(8, 0))
+        top = ctk.CTkFrame(box, fg_color="transparent")
+        top.pack(fill="x", padx=10, pady=(10, 4))
+        ctk.CTkLabel(top, text="Caça", text_color=TEXT, font=ctk.CTkFont(weight="bold")).pack(side="left")
+        self.hunt_current = ctk.CTkLabel(top, text="", text_color=ACCENT, anchor="w")
+        self.hunt_current.pack(side="left", padx=10, fill="x", expand=True)
+        ctk.CTkButton(top, text="Só treinar", width=100, fg_color=BORDER, hover_color=ACCENT_HOVER, text_color=TEXT,
+                      command=self._hunt_clear).pack(side="right")
+        self.hunt_search = ctk.CTkEntry(box, placeholder_text="Digite para buscar a caça (ex.: orc, bone, cobra)",
+                                        fg_color=BG, border_color=BORDER, height=34)
+        self.hunt_search.pack(fill="x", padx=10, pady=4)
+        self.hunt_search.bind("<KeyRelease>", self._hunt_key)
+        self.hunt_search.bind("<Return>", lambda e: self._hunt_pick_first())
+        self.hunt_search.bind("<Escape>", lambda e: self._hunt_search_clear())
+        self.hunt_search.bind("<Down>", lambda e: self._hunt_focus_list())
+        lists = tk.Frame(box, bg=PANEL_ALT)
+        lists.pack(fill="x", padx=10, pady=2)
+        self.hunt_list = tk.Listbox(lists, height=7, bg=BG, fg=TEXT, selectbackground=ACCENT, selectforeground=DARK_TEXT,
+                                    highlightthickness=0, borderwidth=0, activestyle="none", font=("Segoe UI", 10),
+                                    exportselection=False)
+        scroll = tk.Scrollbar(lists, orient="vertical", command=self.hunt_list.yview)
+        self.hunt_list.configure(yscrollcommand=scroll.set)
+        self.hunt_list.pack(side="left", fill="x", expand=True)
+        scroll.pack(side="right", fill="y")
+        self.hunt_list.bind("<ButtonRelease-1>", lambda e: self._hunt_pick_selected())
+        self.hunt_list.bind("<Return>", lambda e: self._hunt_pick_selected())
+        self.hunt_count = ctk.CTkLabel(box, text="", text_color=MUTED, anchor="w")
+        self.hunt_count.pack(fill="x", padx=10)
+        act = ctk.CTkFrame(box, fg_color="transparent")
+        act.pack(fill="x", padx=10, pady=(4, 10))
+        ctk.CTkLabel(act, text="Ato", text_color=TEXT).pack(side="left")
+        self.act_seg = ctk.CTkSegmentedButton(act, values=["Ato I", "Ato II"], command=lambda v: self._set("act", v),
+                                              selected_color=ACCENT, selected_hover_color=ACCENT_HOVER,
+                                              unselected_color=BG, text_color=TEXT)
+        self.act_seg.set(self.cfg.get("act") or "Ato I")
+        self.act_seg.pack(side="left", padx=10)
+        self._hunt_filter()
 
     def _hunt_matches(self, text):
         # cada palavra digitada tem que aparecer no nome, em qualquer ordem ("bastion cobra" acha "Cobra Bastion")
         words = text.lower().split()
         return [h for h in self.hunt_names if all(w in h.lower() for w in words)]
 
-    def _hunt_filter(self):
-        entry = self.hunt_box._entry
-        text = entry.get().strip()
-        matches = self._hunt_matches(text) if text else []
-        if not matches:
-            self._hunt_hide()
-            return
-        if self._hunt_pop is None or not self._hunt_pop.winfo_exists():
-            self._hunt_pop = tk.Toplevel(self)
-            self._hunt_pop.overrideredirect(True)
-            self._hunt_pop.attributes("-topmost", True)
-            self._hunt_lb = tk.Listbox(self._hunt_pop, bg=PANEL_ALT, fg=TEXT, selectbackground=ACCENT,
-                                       selectforeground=DARK_TEXT, highlightthickness=1, highlightbackground=BORDER,
-                                       borderwidth=0, activestyle="none", font=("Segoe UI", 10))
-            self._hunt_lb.pack(fill="both", expand=True)
-            self._hunt_lb.bind("<ButtonRelease-1>", lambda e: self._hunt_pick_selected())
-            self._hunt_lb.bind("<Return>", lambda e: self._hunt_pick_selected())
-            self._hunt_lb.bind("<Escape>", lambda e: self._hunt_hide())
-        shown = matches[:12]
-        self._hunt_lb.delete(0, "end")
-        for name in shown:
-            self._hunt_lb.insert("end", name)
-        self._hunt_lb.configure(height=len(shown))
-        self._hunt_lb.selection_clear(0, "end")
-        self._hunt_lb.selection_set(0)
-        x, y = entry.winfo_rootx(), entry.winfo_rooty() + entry.winfo_height()
-        self._hunt_pop.geometry(f"{entry.winfo_width()}x{len(shown) * 22 + 4}+{x}+{y}")
-        self._hunt_pop.deiconify()
-        self._hunt_pop.lift()
+    def _hunt_key(self, event):
+        if event.keysym not in ("Return", "Escape", "Up", "Down"):
+            self._hunt_filter()
 
-    def _hunt_hide(self):
-        if self._hunt_pop is not None and self._hunt_pop.winfo_exists():
-            self._hunt_pop.withdraw()
+    def _hunt_filter(self):
+        matches = self._hunt_matches(self.hunt_search.get().strip())
+        current = self.cfg.get("hunt") or ""
+        self.hunt_list.delete(0, "end")
+        for name in matches:
+            self.hunt_list.insert("end", name)
+        if current in matches:
+            index = matches.index(current)
+            self.hunt_list.selection_set(index)
+            self.hunt_list.see(index)
+        self.hunt_count.configure(text=f"{len(matches)} caça(s)" + ("" if matches else " — nenhuma com esse nome"))
+        self._hunt_refresh_current()
+
+    def _hunt_refresh_current(self):
+        hunt = self.cfg.get("hunt") or ""
+        self.hunt_current.configure(text=f"escolhida: {hunt}" if hunt else "nenhuma (só treina)")
 
     def _hunt_focus_list(self):
-        if self._hunt_pop is not None and self._hunt_pop.winfo_exists() and self._hunt_pop.winfo_viewable():
-            self._hunt_lb.focus_set()
-            self._hunt_lb.selection_set(0)
+        self.hunt_list.focus_set()
+        if self.hunt_list.size() and not self.hunt_list.curselection():
+            self.hunt_list.selection_set(0)
 
     def _hunt_pick_selected(self):
-        sel = self._hunt_lb.curselection() if self._hunt_lb is not None else ()
+        sel = self.hunt_list.curselection()
         if sel:
-            self.hunt_box.set(self._hunt_lb.get(sel[0]))
-            self._hunt_hide()
-            self._hunt_confirm()
+            self._hunt_choose(self.hunt_list.get(sel[0]))
 
-    def _hunt_confirm(self):
-        typed = self.hunt_box._entry.get().strip()
-        if self._hunt_pop is not None and self._hunt_pop.winfo_viewable() and self._hunt_lb.curselection():
-            typed = self._hunt_lb.get(self._hunt_lb.curselection()[0])  # Enter/saida com a lista aberta: o destacado
-        exact = next((h for h in [NO_HUNT] + self.hunt_names if h.lower() == typed.lower()), None)
-        if exact is None and typed:
-            # um unico resultado do filtro vale como escolha
-            matches = self._hunt_matches(typed)
-            if len(matches) == 1:
-                exact = matches[0]
-        self._hunt_hide()
-        if exact is None:
-            # nome que nao existe: volta pra caca atual em vez de salvar lixo
-            current = self.cfg["hunt"] or NO_HUNT
-            self.hunt_box.set(current)
-            if typed and typed != NO_HUNT:
-                self.log(f"caça '{typed}' não está na lista")
-            return
-        self.hunt_box.set(exact)
-        if exact != (self.cfg["hunt"] or NO_HUNT):
-            self._hunt_set(exact)
+    def _hunt_pick_first(self):
+        matches = self._hunt_matches(self.hunt_search.get().strip())
+        if matches:
+            self._hunt_choose(matches[0])
+
+    def _hunt_choose(self, name):
+        if name != (self.cfg.get("hunt") or ""):
+            self._set("hunt", name)
+        self._hunt_refresh_current()
+
+    def _hunt_clear(self):
+        self._set("hunt", "")
+        self._hunt_refresh_current()
+
+    def _hunt_search_clear(self):
+        self.hunt_search.delete(0, "end")
+        self._hunt_filter()
 
     def _prey_mode_picked(self, label):
         mode = {b: a for a, b in PREY_MODES.items()}[label]

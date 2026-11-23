@@ -411,8 +411,18 @@ class Account:
         self.page.evaluate("s => document.querySelector(s).click()", S.PICKER_BAND_ALL)
         time.sleep(0.4)
 
-    def change_difficulty(self, diff):
-        """Botao ALTERAR (topo) -> 'Ajuste sua caçada': troca SO a dificuldade, sem mexer na caça nem no Builder."""
+    def _pick_act(self, act):
+        """Aba 'Ato I' / 'Ato II' da janela de caça (muda quais dificuldades aparecem). Devolve False se nao achou a aba."""
+        if not act:
+            return True
+        clicked = self.page.evaluate("""(name) => { const a = [...document.querySelectorAll('button.hcd-act')]
+            .find(x => x.offsetParent && (x.innerText || '').trim() === name); if (!a) return false; a.click(); return true; }""", act)
+        if clicked:
+            time.sleep(0.5)   # o jogo redesenha a lista de dificuldades do ato escolhido
+        return clicked
+
+    def change_difficulty(self, diff, act=None):
+        """Botao ALTERAR (topo) -> 'Ajuste sua caçada': troca SO a dificuldade (e o ato), sem mexer na caça nem no Builder."""
         dialog = "() => [...document.querySelectorAll('*')].some(e => e.children.length === 0 && (e.textContent||'').trim() === 'Ajuste sua caçada' && e.offsetParent)"
         if not self.page.evaluate(dialog):
             self.close_windows()
@@ -421,8 +431,9 @@ class Account:
                 raise RuntimeError("janela 'Ajuste sua caçada' nao abriu")
         find = """(name) => { const o = [...document.querySelectorAll('button.hcd-option')].find(x => x.offsetParent &&
             (x.innerText || '').split('\\n')[0].trim() === name); if (!o) return false; o.click(); return true; }"""
+        self._pick_act(act)
         picked = self.page.evaluate(find, diff)
-        if not picked:   # algumas dificuldades ficam no Ato II
+        if not picked:   # sem ato escolhido: algumas dificuldades ficam no Ato II
             self.page.evaluate("() => { const a = [...document.querySelectorAll('button.hcd-act')].find(x => (x.innerText||'').trim() === 'Ato II'); if (a) a.click(); }")
             time.sleep(0.5)
             picked = self.page.evaluate(find, diff)
@@ -445,8 +456,8 @@ class Account:
         finally:
             self.close_windows()
 
-    def start_hunt(self, hunt, difficulty="Normal"):
-        """Escolher Hunt -> card da caça -> Caçada online -> dificuldade -> Entrar na caçada."""
+    def start_hunt(self, hunt, difficulty="Normal", act=None):
+        """Escolher Hunt -> card da caça -> Caçada online -> ato -> dificuldade -> Entrar na caçada."""
         self.open_picker()
         # a janela se redesenha o tempo todo (20/10: campo e botoes 'somem' no meio do click do Playwright):
         # tudo por JS no elemento do momento. Busca: valor + evento 'input' (o mesmo que digitar).
@@ -477,11 +488,13 @@ class Account:
                 break
         else:
             raise RuntimeError("a janela 'Prepare sua caçada' nao abriu")
+        if act and not self._pick_act(act):
+            self.log(f"ato '{act}' nao encontrado na janela: usando o selecionado")
         clicked = self.page.evaluate("""([sel, name]) => {
             const o = [...document.querySelectorAll(sel)].find(e => (e.innerText || '').trim().startsWith(name) && !e.disabled);
             if (!o) return false; o.click(); return true; }""", [S.DIFF_OPTION, difficulty])
         if not clicked:
-            self.log(f"dificuldade '{difficulty}' indisponivel: usando a selecionada")
+            self.log(f"dificuldade '{difficulty}' indisponivel{' no ' + act if act else ''}: usando a selecionada")
         time.sleep(0.3)
         self._js_click(S.DIFF_CONFIRM, visible=True)
         if not self._wait(lambda: S.SCENE_HUNTING in (self.page.evaluate(
