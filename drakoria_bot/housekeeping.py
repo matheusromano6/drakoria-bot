@@ -56,3 +56,23 @@ def check_build(page, memory, log):
     if memory and previous != build:
         memory.set("game_build", build)
     return build
+
+
+def spent_today(folder, clock=time.time):
+    """{tipo: gold} dos gastos automaticos de hoje (logs/gastos_AAAA-MM-DD.jsonl)."""
+    day = datetime.datetime.fromtimestamp(clock()).strftime("%Y-%m-%d")
+    path = os.path.join(folder, f"gastos_{day}.jsonl")
+    totals = {}
+    if not os.path.exists(path):
+        return totals
+    try:
+        with open(path, encoding="utf-8") as file:
+            for line in file:
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                totals[rec.get("tipo", "outros")] = totals.get(rec.get("tipo", "outros"), 0) + int(rec.get("gold", 0))
+    except OSError:
+        pass
+    return totals

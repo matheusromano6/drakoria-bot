@@ -81,6 +81,7 @@ class Runner:
             self.engine = Engine(accounts, self.cfg, self.log, refresh=pool.refresh, market=self.market,
                                  credentials=Credentials(os.path.join(ROOT, "credentials.json")),
                                  memory=memory)
+            self.engine.notify = lambda title, text: self.notify and self.notify(title, text)
             self.log("bot iniciado")
             self.engine.run(self.stop_event)
         except Exception as error:

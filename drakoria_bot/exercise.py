@@ -63,6 +63,8 @@ BUY_JS = r"""async ([shopId, weapon, qty, reserve]) => {
   if (!row) return {ok: false, msg: name + ' nao esta a venda agora'};
   const cost = Number(row.price) * qty;
   if (Number(g.char.gold || 0) - cost < Number(reserve || 0)) return {ok: false, msg: 'gold abaixo da reserva (custaria ' + cost + ')'};
+  const before = Number(g.char.gold || 0);
   const r = g.buyCityShopItem(shopId, row.itemId, qty);
-  return {ok: !!(r && r.ok), item: name, qty, cost, msg: (r && r.msg) || ''};
+  return {ok: !!(r && r.ok), item: name, qty, cost, msg: (r && r.msg) || '',
+          gold_before: before, gold_after: Number(g.char.gold || 0)};
 }"""

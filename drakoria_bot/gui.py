@@ -225,6 +225,15 @@ class App:
                                  f"Alvo {row.get('target') or '-'}   ·   Auto Sell {'ligado' if row.get('auto') else 'desligado'}")
                     prey = " · ".join(f"espaço {i} {c} {b} ({t})" for i, c, b, t in row.get("prey") or [])
                     lines.append(f"      Prey: {prey or '-'}")
+                    if row.get("stamina") is not None or row.get("durables") is not None:
+                        sta = row.get("stamina")
+                        sta = "-" if sta is None else f"{int(sta)}h{int(sta % 1 * 60):02d}"
+                        lines.append(f"      Stamina {sta}   ·   Durables na mochila {row.get('durables', '-')}")
+                from . import housekeeping
+                spent = housekeeping.spent_today(os.path.join(ROOT, "logs"))
+                if spent:
+                    lines.append("Gastos automáticos hoje: " + " · ".join(f"{k} {v:,}".replace(",", ".")
+                                                                        for k, v in spent.items()))
                 self.stats.configure(text="\n".join(lines))
         self._refresh_market()
         self._imb_render()
@@ -327,6 +336,9 @@ class App:
         ctk.CTkCheckBox(ex, text="Comprar arma de exercício (durable) para treinar até a stamina alvo:", variable=self.exercise_var,
                         fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
                         command=lambda: self._set_exercise_enabled(self.exercise_var.get())).pack(side="left")
+        self.exercise_sim_var = tk.BooleanVar(value=bool((self.cfg.get("exercise") or {}).get("simulate", False)))
+        ctk.CTkCheckBox(ex, text="só simular", variable=self.exercise_sim_var, fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                        text_color=TEXT, command=lambda: self._set_exercise_sim(self.exercise_sim_var.get())).pack(side="left", padx=(8, 0))
         ctk.CTkLabel(ex, text="Stamina alvo (h):", text_color=TEXT).pack(side="left", padx=(10, 2))
         self.exercise_target = ctk.CTkEntry(ex, width=50)
         self.exercise_target.insert(0, str((self.cfg.get("exercise") or {}).get("target_stamina_h", 40)))
@@ -361,6 +373,10 @@ class App:
             self.reserve_entry.insert(0, str(int(self.cfg.get("gold_reserve", 5_000_000)) // 1_000_000))
             return
         self._set("gold_reserve", value)
+
+    def _set_exercise_sim(self, on):
+        self.cfg.setdefault("exercise", {})["simulate"] = bool(on)
+        self.save()
 
     def _set_exercise_enabled(self, on):
         self.cfg.setdefault("exercise", {})["enabled"] = bool(on)
