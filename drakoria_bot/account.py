@@ -73,6 +73,17 @@ PREY_JS = r"""([slotSel, creatureSel, toolSel]) => {
 }"""
 
 
+# item 'Bosses / Chefes e Auto Boss' da aba Aventura do menu: clica no elemento VISIVEL mais interno com o texto
+BOSSES_ITEM_JS = r"""() => {
+  const els = [...document.querySelectorAll('*')].filter(e => e.offsetParent !== null
+    && /Chefes e Auto Boss/.test(e.innerText || '') && e.getBoundingClientRect().width > 0);
+  if (!els.length) return false;
+  els.sort((a, b) => a.innerText.length - b.innerText.length);
+  els[0].click();
+  return true;
+}"""
+
+
 BOSS_TEXT_JS = r"""() => {
   const go = document.querySelector('button.bs-go');
   if (!go) return '';
@@ -691,15 +702,31 @@ class Account:
         return self.page.locator("button.bs-go").first.is_visible() if self.page.locator("button.bs-go").count() else False
 
     def _open_bosses_window(self):
-        if not self._bosses_open():
-            self.close_windows()
-            self.page.evaluate("""() => { const b = [...document.querySelectorAll('button')].find(x => x.offsetParent
-                && x.innerText.trim() === 'Menu'); if (b) b.click(); }""")
-            if not self._wait(lambda: self.page.get_by_text("Chefes e Auto Boss").first.is_visible(), 5):
-                raise RuntimeError("menu Central Drakoria nao abriu")
-            self.page.get_by_text("Chefes e Auto Boss").first.click()
+        if self._bosses_open():
+            return
+        self.close_windows()
+        # menu principal (botao 'Abrir menu principal') > aba 'Aventura' > 'Bosses (Chefes e Auto Boss)'
+        self.page.evaluate("""() => { const b = document.querySelector('button[aria-label="Abrir menu principal"]')
+            || [...document.querySelectorAll('button')].find(x => x.offsetParent && x.innerText.trim() === 'Menu'); if (b) b.click(); }""")
+        try:
+            aventura = self.page.locator(".mm-tab", has_text="Aventura").first
+            if not self._wait(aventura.is_visible, 5):
+                raise RuntimeError("menu principal nao abriu")
+            aventura.click()
+            clicked = lambda: self.page.evaluate(BOSSES_ITEM_JS)
+            if not self._wait(clicked, 4):
+                raise RuntimeError("aba Aventura sem 'Bosses'")
             if not self._wait(self._bosses_open, 6):
                 raise RuntimeError("janela Bosses nao abriu")
+        except Exception:
+            self._close_menu()
+            raise
+
+    def _close_menu(self):
+        """Fecha o menu principal (se estiver aberto) para nao deixar a tela travada."""
+        self.page.evaluate("""() => { const b = document.querySelector('button[aria-label="Fechar menu"]');
+            if (b && b.offsetParent) b.click(); }""")
+        self._wait(lambda: not self.page.locator(".mm-tab", has_text="Aventura").first.is_visible(), 2)
 
     def _boss_rows(self):
         """[(boss, status)] da janela Bosses ('Em cooldown' = ja feito/indisponivel; o resto = na fila/pronto)."""
