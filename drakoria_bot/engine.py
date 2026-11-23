@@ -44,6 +44,10 @@ class Engine:
         self.user_busy_until = 0        # janela do usuario aberta: nada de mexer na tela ate esse horario
         self.hunts_checked = False      # catalogo de caças relido do jogo 1x por inicio do bot
         self.prey_spent = {}            # ouro gasto trocando lista da Prey hoje (sem memory.json)
+        hold = memory.get("boss_hold") if memory else None
+        if hold and hold.get("last") and float(hold.get("until") or 0) > self.clock():
+            self.boss_last, self.boss_until = hold["last"], float(hold["until"])
+            self.log(f"retomando a fila de bosses (até {self.boss_last} terminar)")
         if memory and memory.get("last_state"):
             s = memory.get("last_state")
             self.log(f"retomando do ponto salvo: {s.get('phase')}, caça {s.get('hunt') or '-'}, "
@@ -526,9 +530,15 @@ class Engine:
             self.boss_last = last
             self.boss_until = now + cfg.get("max_hours", 4) * 3600
             self.boss_checked = now
+            self._save_boss()
             self.log(f"auto boss: fila iniciada; acompanho até o último ({last or '?'}) terminar")
         else:
             self.log(f"auto boss: {status} (volta a tentar amanhã)")
+
+    def _save_boss(self):
+        """Guarda a fila de bosses em andamento: se o bot cair ou for atualizado, ela continua (nao volta pro treino)."""
+        if self.memory:
+            self.memory.set("boss_hold", {"until": self.boss_until, "last": self.boss_last})
 
     def _boss_hold(self, acc, now):
         """Enquanto a fila de bosses roda, nao mexe nas contas. Libera quando o ultimo boss terminar (checa a cada 60s)."""
@@ -542,6 +552,7 @@ class Engine:
             if not pending:
                 self.log(f"auto boss: último da fila ({self.boss_last}) terminou; o bot volta às funções")
                 self.boss_last, self.boss_until = None, 0
+                self._save_boss()
         if self.boss_last is None:
             self.boss_until = 0
         self.snapshot["goal"] = f"auto boss rodando (até {self.boss_last or '…'})"
