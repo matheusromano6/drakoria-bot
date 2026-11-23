@@ -455,6 +455,12 @@ class Account:
         if status != "ok":
             raise RuntimeError(status)
 
+    def buy_exercise(self, quotas, reserve_gold, check=False):
+        """Compra a arma de exercicio da vocacao deste personagem na Loja da Cidade (pelo motor do jogo)."""
+        from .exercise import BUY_JS, SHOP
+        self._game_hook()
+        return self.page.evaluate(BUY_JS, [SHOP, quotas, int(reserve_gold), bool(check)])
+
     def atlas(self, reserve_gold, apply=False):
         """Atlas Celestial de todos os personagens da conta, pelo motor do jogo (sem janela)."""
         from . import atlas

@@ -79,7 +79,12 @@ DEFAULTS = {
     "builder": {"enabled": True},
     # Atlas Celestial: a cada check_minutes confere os pontos livres de todos os personagens e aplica a build
     # (Vocacao -> caminhos A/B/C/L1/L2). reserve_gold = ouro que nunca e' gasto nos pontos pagos.
-    "atlas": {"enabled": True, "check_minutes": 30, "reserve_gold": 5000000, "auto_apply": True},
+    "atlas": {"enabled": True, "check_minutes": 30, "auto_apply": True},
+    # gold que o bot NUNCA gasta nas compras automaticas (Atlas e arma de exercicio). Editavel na aba Regras.
+    "gold_reserve": 5000000,
+    # compra de arma de exercicio (Loja > Treinamento) 1x por dia por conta, na cidade antes do treino.
+    # per_vocation = quantas durable exercise comprar por vocacao (0 = nao compra)
+    "exercise": {"enabled": False, "per_vocation": {"knight": 0, "paladin": 0, "sorcerer": 0, "druid": 0}},
     "user_idle_seconds": 60,              # janela do usuario aberta: o bot espera isso depois que ela fechar
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s

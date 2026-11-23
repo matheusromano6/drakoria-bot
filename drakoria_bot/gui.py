@@ -227,7 +227,7 @@ class App:
         self._refresh_market()
         self._imb_render()
         self._refresh_spent()
-        self.root.after(1000, self._poll_state)
+        self.root.after(1500, self._poll_state)
 
     # ---------------------------------------------------------------- regras
     def _build_rules(self, tab):
@@ -309,6 +309,31 @@ class App:
         ctk.CTkCheckBox(grid, text="Atlas Celestial: gastar pontos livres com a build de cada vocação", variable=self.atlas_var,
                         fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
                         command=lambda: self._set_atlas(self.atlas_var.get())).grid(row=11, column=0, columnspan=2, sticky="w", pady=6)
+        # ouro minimo a reservar (Atlas e compra de exercise nunca gastam abaixo disso)
+        res = ctk.CTkFrame(grid, fg_color="transparent")
+        res.grid(row=12, column=0, columnspan=2, sticky="w", pady=4)
+        ctk.CTkLabel(res, text="Gold mínimo a reservar (milhões):", text_color=TEXT).pack(side="left")
+        self.reserve_entry = ctk.CTkEntry(res, width=80)
+        self.reserve_entry.insert(0, str(int(self.cfg.get("gold_reserve", 5_000_000)) // 1_000_000))
+        self.reserve_entry.pack(side="left", padx=6)
+        self.reserve_entry.bind("<FocusOut>", lambda e: self._save_reserve())
+        self.reserve_entry.bind("<Return>", lambda e: self._save_reserve())
+        # arma de exercicio (Loja > Treinamento): quantas durable comprar por vocacao, 1x por dia por conta
+        ex = ctk.CTkFrame(grid, fg_color="transparent")
+        ex.grid(row=13, column=0, columnspan=2, sticky="w", pady=4)
+        self.exercise_var = tk.BooleanVar(value=bool((self.cfg.get("exercise") or {}).get("enabled", False)))
+        ctk.CTkCheckBox(ex, text="Comprar arma de exercício (durable) por vocação:", variable=self.exercise_var,
+                        fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
+                        command=lambda: self._set_exercise_enabled(self.exercise_var.get())).pack(side="left")
+        self.exercise_entries = {}
+        for voc, label in (("knight", "Knight"), ("paladin", "Paladin"), ("sorcerer", "Sorc"), ("druid", "Druid")):
+            ctk.CTkLabel(ex, text=label, text_color=TEXT).pack(side="left", padx=(10, 2))
+            entry = ctk.CTkEntry(ex, width=44)
+            entry.insert(0, str((self.cfg.get("exercise") or {}).get("per_vocation", {}).get(voc, 0)))
+            entry.pack(side="left")
+            entry.bind("<FocusOut>", lambda e, v=voc: self._save_exercise_qty(v))
+            entry.bind("<Return>", lambda e, v=voc: self._save_exercise_qty(v))
+            self.exercise_entries[voc] = entry
         self.relogin_var = tk.BooleanVar(value=bool(self.cfg["relogin"]))
         ctk.CTkCheckBox(grid, text="Relogin automático", variable=self.relogin_var, fg_color=ACCENT, hover_color=ACCENT_HOVER,
                         text_color=TEXT, command=lambda: self._set("relogin", self.relogin_var.get())
@@ -327,6 +352,29 @@ class App:
 
     def _set_atlas(self, on):
         self.cfg.setdefault("atlas", {})["enabled"] = bool(on)
+        self.save()
+
+    def _save_reserve(self):
+        try:
+            value = max(0, int(float(self.reserve_entry.get().replace(",", "."))) * 1_000_000)
+        except ValueError:
+            self.reserve_entry.delete(0, "end")
+            self.reserve_entry.insert(0, str(int(self.cfg.get("gold_reserve", 5_000_000)) // 1_000_000))
+            return
+        self._set("gold_reserve", value)
+
+    def _set_exercise_enabled(self, on):
+        self.cfg.setdefault("exercise", {})["enabled"] = bool(on)
+        self.save()
+
+    def _save_exercise_qty(self, voc):
+        try:
+            qty = max(0, min(100, int(self.exercise_entries[voc].get() or 0)))
+        except ValueError:
+            qty = 0
+        self.cfg.setdefault("exercise", {}).setdefault("per_vocation", {})[voc] = qty
+        self.exercise_entries[voc].delete(0, "end")
+        self.exercise_entries[voc].insert(0, str(qty))
         self.save()
 
     def _set(self, key, value):

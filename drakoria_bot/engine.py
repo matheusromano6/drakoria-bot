@@ -43,6 +43,8 @@ class Engine:
         self.user_busy_until = 0        # janela do usuario aberta: nada de mexer na tela ate esse horario
         self.hunts_checked = False      # catalogo de caças relido do jogo 1x por inicio do bot
         self.prey_spent = {}            # ouro gasto trocando lista da Prey hoje (sem memory.json)
+        self.timings = {}               # desempenho: tempos das etapas (resumo no log a cada 10 min)
+        self.timing_report_at = self.clock()
         try:
             from .market import imbuements as MI
             self.imb_data = MI.load()
@@ -154,16 +156,38 @@ class Engine:
         return None
 
     # ------------------------------------------------------------------ ciclo
+    def _timed(self, key, seconds):
+        """Mede o tempo de cada etapa e escreve um resumo no log a cada 10 min (pra achar o que deixa lento)."""
+        stat = self.timings.setdefault(key, [0, 0.0, 0.0])      # [vezes, soma, maximo]
+        stat[0] += 1
+        stat[1] += seconds
+        stat[2] = max(stat[2], seconds)
+        now = self.clock()
+        if now - self.timing_report_at >= 600:
+            self.timing_report_at = now
+            parts = [f"{k} {v[1] / v[0] * 1000:.0f} ms medio, {v[2] * 1000:.0f} ms max ({v[0]}x)"
+                     for k, v in self.timings.items() if v[0]]
+            if parts:
+                self.log("desempenho (10 min): " + "; ".join(parts))
+            self.timings = {}
+
     def run(self, stop):
+        last_refresh = None
         while not stop.is_set():
-            if self.refresh:
+            # a lista de paginas muda pouco: relê a cada 10 s (ou sempre que nao ha conta)
+            now = self.clock()
+            if self.refresh and (last_refresh is None or not self.accounts or now - last_refresh >= 10):
                 self.accounts = self.refresh()
+                last_refresh = now
             for acc in self.accounts:
+                started = time.perf_counter()
                 try:
                     self.tick(acc)
                 except Exception as error:
                     self.log(f"erro lendo a pagina: {error}")
                     continue
+                finally:
+                    self._timed("tick", time.perf_counter() - started)
                 if self.market and self.snapshot.get("phase") not in ("login", "error", "unknown", "-"):
                     try:
                         if self.market.tick(acc.page, self.clock()):
@@ -372,6 +396,7 @@ class Engine:
             if self._do("sair da caça", acc.leave_hunt):
                 self.log(f"saindo da caça pra treinar ({self.snapshot.get('goal')})")
         elif st.phase in ("city", "house_idle"):
+            self._exercise(acc, st)
             if self._do("treinar", acc.start_training):
                 self.log(f"treinando ({self.snapshot.get('goal')})")
 
@@ -690,9 +715,32 @@ class Engine:
         if self.memory:
             self.memory.set("bestiary", progress)
 
+    def _exercise(self, acc, st):
+        """Compra 1x por dia, por conta, a arma de exercicio da vocacao (quantidade da aba Regras)."""
+        ecfg = self.cfg.get("exercise") or {}
+        if not ecfg.get("enabled") or self.memory is None:
+            return
+        today = datetime.date.today().isoformat()
+        done = dict(self.memory.get("exercise") or {})
+        key = st.name or "conta"
+        if done.get(key) == today:
+            return
+        result = self._do("exercicio", lambda: acc.buy_exercise(ecfg.get("per_vocation") or {},
+                                                                int(self.cfg.get("gold_reserve", 5_000_000))))
+        if result is None:
+            return                                  # erro (ja logado pelo _do): tenta de novo depois
+        done[key] = today
+        self.memory.set("exercise", done)
+        if not isinstance(result, dict) or result.get("skip"):
+            return
+        if result.get("ok"):
+            self.log(f"Exercise {key}: {result.get('qty')}x {result.get('item')} comprada(s) por {result.get('cost')} gold")
+        else:
+            self.log(f"Exercise {key}: nao comprou ({result.get('msg')})")
+
     def _atlas(self, acc, acfg):
         from . import atlas
-        reserve = int(acfg.get("reserve_gold", 5_000_000))
+        reserve = int(self.cfg.get("gold_reserve", 5_000_000))
         rows = acc.atlas(reserve, apply=False)              # simula primeiro
         if not any(r.get("ok") for r in rows):
             return                                          # nada pra gastar: silencio
