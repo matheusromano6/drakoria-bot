@@ -35,7 +35,15 @@ class Engine:
         self.boss_until = 0        # auto boss rodando: ate esse horario (rede de seguranca) o bot nao mexe nas contas
         self.boss_last = None      # ultimo boss da fila: quando ele termina, o bot volta as funções
         self.boss_checked = 0
-        self.cooldown = {}              # acao -> horario liberado
+        self.warzone_until = 0          # warzone diaria rodando: ate esse horario o bot espera (ela sai sozinha)
+        self.warzone_by = None          # conta que iniciou (ela confere o fim)
+        self.warzone_checked = 0
+        self.warzone_wait = {}          # conta -> horario em que tenta de novo (indisponivel: combate, botao)
+        wz_hold = memory.get("warzone_hold") if memory else None
+        if wz_hold and float(wz_hold.get("until") or 0) > self.clock():
+            self.warzone_until, self.warzone_by = float(wz_hold["until"]), wz_hold.get("by")
+            self.log(f"retomando a warzone (espero ela terminar; iniciada por {self.warzone_by})")
+        self.cooldown = {}            # acao -> horario liberado
         self.last_ok = {}               # acao -> ultimo sucesso
         self.phase_since = (None, 0)    # (fase, desde)
         self.mismatch = 0
@@ -303,6 +311,23 @@ class Engine:
             self._auto_boss(acc, now, st.name or "conta")
             return
 
+        # 3c) warzone diaria (Quests > Warzone I-II-III > 'Entrar na arena'), depois do boss do dia. Enquanto ela roda
+        #     (a Party vai junto) o bot nao mexe nas contas; quando termina a Party volta pra cidade sozinha.
+        if self.warzone_until:
+            # quem iniciou confere (a tela dela mostra a Warzone); tempo maximo = rede de seguranca
+            if now >= self.warzone_until or ((st.name or "conta") == self.warzone_by and now - self.warzone_checked >= 15):
+                self.warzone_checked = now
+                if now >= self.warzone_until or not self._warzone_running(acc):
+                    self.log("warzone: terminou (ou passou do tempo máximo); o bot volta às funções")
+                    self.warzone_until, self.warzone_by = 0, None
+                    self._save_warzone()
+            if self.warzone_until:
+                self.snapshot["goal"] = "warzone em andamento"
+                return
+        if st.phase in ("city", "house", "house_idle") and self._warzone_due(now, st.name or "conta"):
+            self._warzone(acc, now, st.name or "conta")
+            return
+
         # 4) loot: protecao de boss sempre ligada; Auto Sell conforme Premium/escolha
         auto = self.auto_sell(st)
         every = self.cfg["loot"]["check_minutes"] * 60
@@ -546,6 +571,50 @@ class Engine:
             self.log(f"auto boss: fila iniciada; acompanho até o último ({last or '?'}) terminar")
         else:
             self.log(f"auto boss: {status} (volta a tentar amanhã)")
+
+    def _warzone_due(self, now, name="conta"):
+        """Warzone diaria: 1x por dia por conta (reseta 00:00), so' depois do boss do dia."""
+        cfg = self.cfg.get("warzone") or {}
+        if not cfg.get("enabled", True):
+            return False
+        day = datetime.datetime.fromtimestamp(now).date().isoformat()
+        days = (self.memory.get("warzone_days") if self.memory else getattr(self, "_warzone_days", {})) or {}
+        return days.get(name) != day and self.warzone_wait.get(name, 0) <= now
+
+    def _warzone(self, acc, now, name="conta"):
+        cfg = self.cfg.get("warzone") or {}
+        day = datetime.datetime.fromtimestamp(now).date().isoformat()
+        status = self._do("warzone", acc.warzone_start)
+        if status is None:
+            return  # erro: a acao ja ficou em espera (cooldown)
+        status = status if isinstance(status, str) else "iniciada"
+        if status in ("iniciada", "ja feita"):
+            days = dict((self.memory.get("warzone_days") if self.memory else getattr(self, "_warzone_days", {})) or {})
+            days[name] = day
+            if self.memory:
+                self.memory.set("warzone_days", days)
+            self._warzone_days = days
+        if status == "iniciada":
+            self.warzone_until = now + cfg.get("max_minutes", 30) * 60
+            self.warzone_by, self.warzone_checked = name, now
+            self._save_warzone()
+            self.log(f"warzone: iniciada por {name} (a party vai junto); acompanho até terminar")
+        elif status == "ja feita":
+            self.log(f"warzone: {name} já fez a de hoje")
+        else:
+            self.warzone_wait[name] = now + 900
+            self.log(f"warzone: {status} (tento de novo em 15 min)")
+
+    def _warzone_running(self, acc):
+        try:
+            return acc.warzone_running()
+        except Exception as error:
+            self.log(f"warzone: não consegui ler a tela ({error}); espero")
+            return True
+
+    def _save_warzone(self):
+        if self.memory:
+            self.memory.set("warzone_hold", {"until": self.warzone_until, "by": self.warzone_by})
 
     def _boss_progress(self, remaining, now):
         """Progresso da fila (quantos prontos faltam) e alerta se ela nao andar por 20 min."""

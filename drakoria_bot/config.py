@@ -18,6 +18,8 @@ DEFAULTS = {
     # auto boss: 1x por dia no horario (Menu > Aventura > Bosses > Iniciar Auto Boss). Acompanha o ultimo boss da fila;
     # max_hours = rede de seguranca se o ultimo nunca terminar
     "boss": {"enabled": True, "time": "00:01", "max_hours": 4},
+    # Warzone diaria (Quests > Warzone I-II-III): 1x por dia por conta, depois do boss. max_minutes = rede de seguranca
+    "warzone": {"enabled": True, "max_minutes": 30},
     "difficulty": "Normal",               # Insano+ pede level (250/450/700/1000)
     "loot": {
         "auto_sell": "auto",              # "auto" = liga se a conta for Premium | "on" | "off"

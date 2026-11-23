@@ -170,6 +170,7 @@ def make(acc, creds=None, **cfg_over):
     cfg_over.setdefault("goals", {"enabled": False})
     cfg_over.setdefault("imbuing", {"enabled": False})
     cfg_over.setdefault("boss", {"enabled": False})  # auto boss tem teste proprio (horario 00:01)
+    cfg_over.setdefault("warzone", {"enabled": False})  # warzone tem teste proprio
     cfg = config._merge(config.DEFAULTS, cfg_over)
     clock = Clock()
     logs = []
@@ -551,6 +552,94 @@ class AutoBossTest(unittest.TestCase):
         eng.tick(acc)
         self.assertTrue(any("terminou" in line for line in logs))
         self.assertIsNone(eng.boss_last)
+
+
+class FakeWarzone(FakeAccount):
+    """Conta com a Warzone: 'iniciada' liga o combate (tela de hunting) ate o teste desligar."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.wz_result = "iniciada"
+        self.wz_running = False
+
+    def warzone_start(self):
+        self._call("warzone_start")
+        if self.wz_result == "iniciada":
+            self.wz_running = True
+            self.st.phase = "hunting"
+        return self.wz_result
+
+    def warzone_running(self):
+        self._call("warzone_running")
+        return self.wz_running
+
+
+class WarzoneTests(unittest.TestCase):
+    ON = {"enabled": True, "max_minutes": 30}
+
+    def test_inicia_uma_vez_por_dia_e_espera_terminar(self):
+        acc = FakeWarzone(phase="city")
+        eng, clock, logs = make(acc, warzone=self.ON)
+        eng.tick(acc)
+        self.assertEqual(acc.calls.count(("warzone_start",)), 1)
+        self.assertGreater(eng.warzone_until, clock())
+        self.assertTrue(any("warzone: iniciada" in line for line in logs))
+        clock.t += 60
+        eng.tick(acc)                                    # ainda rodando: nao inicia de novo
+        self.assertEqual(acc.calls.count(("warzone_start",)), 1)
+        acc.wz_running = False                           # acabou: volta as funcoes
+        clock.t += 20
+        eng.tick(acc)
+        self.assertEqual(eng.warzone_until, 0)
+        acc.st.phase = "city"
+        clock.t += 600
+        eng.tick(acc)                                    # mesmo dia: nao repete
+        self.assertEqual(acc.calls.count(("warzone_start",)), 1)
+
+    def test_ja_feita_marca_o_dia_sem_esperar(self):
+        acc = FakeWarzone(phase="city")
+        acc.wz_result = "ja feita"
+        eng, clock, logs = make(acc, warzone=self.ON)
+        eng.tick(acc)
+        self.assertEqual(eng.warzone_until, 0)
+        self.assertTrue(any("já fez a de hoje" in line for line in logs))
+        eng.tick(acc)
+        self.assertEqual(acc.calls.count(("warzone_start",)), 1)
+
+    def test_indisponivel_tenta_de_novo_em_15_min(self):
+        acc = FakeWarzone(phase="city")
+        acc.wz_result = "indisponivel (Em andamento; fora de combate: False)"
+        eng, clock, logs = make(acc, warzone=self.ON)
+        eng.tick(acc)
+        self.assertEqual(eng.warzone_until, 0)
+        clock.t += 600
+        eng.tick(acc)                                    # ainda em espera (15 min)
+        self.assertEqual(acc.calls.count(("warzone_start",)), 1)
+        clock.t += 400
+        eng.tick(acc)                                    # passou 15 min: tenta de novo
+        self.assertEqual(acc.calls.count(("warzone_start",)), 2)
+
+    def test_retoma_a_espera_depois_de_reiniciar(self):
+        acc = FakeWarzone(phase="hunting")
+        memory = _MemoryStub({"warzone_hold": {"until": 1000.0 + 1200, "by": "conta"}})
+        eng, clock, logs = make(acc, warzone=self.ON)
+        eng.memory = memory
+        eng.warzone_until, eng.warzone_by = 1000.0 + 1200, "conta"
+        acc.wz_running = True
+        eng.tick(acc)                                    # segue esperando (nao mexe)
+        self.assertEqual(acc.calls.count(("warzone_start",)), 0)
+        self.assertEqual(acc.calls.count(("warzone_running",)), 1)
+
+
+class _MemoryStub:
+    def __init__(self, data):
+        self.data = dict(data)
+
+    def get(self, key, default=None):
+        return self.data.get(key, default)
+
+    def set(self, key, value):
+        self.data[key] = value
 
 
 if __name__ == "__main__":

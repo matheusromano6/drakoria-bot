@@ -84,6 +84,45 @@ BOSSES_ITEM_JS = r"""() => {
 }"""
 
 
+# item 'Quests / Missões e desafios' da aba Aventura do menu (mesmo esquema do BOSSES_ITEM_JS)
+QUESTS_ITEM_JS = r"""() => {
+  const els = [...document.querySelectorAll('*')].filter(e => e.offsetParent !== null
+    && /Missões e desafios/.test(e.innerText || '') && e.getBoundingClientRect().width > 0);
+  if (!els.length) return false;
+  els.sort((a, b) => a.innerText.length - b.innerText.length);
+  els[0].click();
+  return true;
+}"""
+
+# filtro 'Todas' da janela Quests (clica se a janela abriu filtrada em 'Para fazer' etc.)
+QUESTS_ALL_TAB_JS = r"""() => {
+  const b = [...document.querySelectorAll('button')].find(x => x.offsetParent && /^Todas/.test(x.innerText.trim()));
+  if (!b) return false;
+  b.click();
+  return true;
+}"""
+
+# detalhe da Warzone na janela Quests: progresso de hoje, botao de entrar e se esta fora de combate
+WARZONE_DETAIL_JS = r"""() => {
+  const d = document.querySelector('.qw-detail');
+  if (!d || !/Warzone/.test(d.innerText || '')) return null;
+  const txt = d.innerText;
+  const m = txt.match(/Baús de hoje\s*(\d+) \/ (\d+)/);
+  const btn = [...d.querySelectorAll('button')].find(b => /Entrar na arena|Em andamento/.test(b.innerText || ''));
+  return {opened: m ? +m[1] : null, total: m ? +m[2] : null, label: btn ? btn.innerText.trim() : '',
+          disabled: btn ? !!btn.disabled : true, fora: /Fora de combate/.test(txt)};
+}"""
+
+# a Warzone esta rodando? (painel no topo: 'Warzone I · Nome' + botao 'Abandonar')
+WARZONE_RUNNING_JS = r"""() => {
+  const btn = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Abandonar' && b.offsetParent);
+  if (!btn) return false;
+  let root = btn;
+  for (let i = 0; i < 3 && root.parentElement; i++) root = root.parentElement;
+  return /Warzone/.test(root.innerText || '');
+}"""
+
+
 BOSS_TEXT_JS = r"""() => {
   const go = document.querySelector('button.bs-go');
   if (!go) return '';
@@ -782,6 +821,51 @@ class Account:
         status = dict(self._boss_rows()).get(boss)
         self.close_windows()
         return status is not None and "cooldown" not in status.lower()
+
+    # ------------------------------------------------------------ warzone diaria
+    def warzone_start(self):
+        """Menu > Aventura > Quests > 'Warzone I · II · III' > 'Entrar na arena'. Devolve 'iniciada', 'ja feita' ou
+        'indisponivel (...)'. A Party vai junto (quem esta na cidade/house entra com o lider)."""
+        self.close_windows()
+        self.page.evaluate("""() => { const b = document.querySelector('button[aria-label="Abrir menu principal"]')
+            || [...document.querySelectorAll('button')].find(x => x.offsetParent && x.innerText.trim() === 'Menu'); if (b) b.click(); }""")
+        try:
+            aventura = self.page.locator(".mm-tab", has_text="Aventura").first
+            if not self._wait(aventura.is_visible, 5):
+                raise RuntimeError("menu principal nao abriu")
+            aventura.click()
+            if not self._wait(lambda: self.page.evaluate(QUESTS_ITEM_JS), 4):
+                raise RuntimeError("aba Aventura sem 'Quests'")
+            # a janela lembra o filtro (ex.: 'Para fazer'): sempre volta pra 'Todas' pra ver a Warzone
+            self._wait(lambda: self.page.evaluate(QUESTS_ALL_TAB_JS), 3)
+            # a lista pagina (Warzone pode ficar na pagina 2): busca 'Warzone' no campo de busca
+            search = self.page.locator('input[placeholder^="Buscar quest"]').first
+            if search.count() and search.is_visible():
+                search.fill("Warzone")
+                time.sleep(0.6)
+            if not self._wait(lambda: self.page.locator(".qw-row", has_text="Warzone").count() > 0, 6):
+                raise RuntimeError("janela Quests nao abriu")
+        except Exception:
+            self._close_menu()
+            raise
+        try:
+            self.page.locator(".qw-row", has_text="Warzone").first.click()
+            if not self._wait(lambda: self.page.evaluate(WARZONE_DETAIL_JS) is not None, 4):
+                raise RuntimeError("detalhe da Warzone nao abriu")
+            info = self.page.evaluate(WARZONE_DETAIL_JS)
+            if info["opened"] is not None and info["total"] and info["opened"] >= info["total"]:
+                return "ja feita"
+            if info["label"] != "Entrar na arena" or info["disabled"]:
+                return f"indisponivel ({info['label'] or 'sem botao'}; fora de combate: {info['fora']})"
+            self.page.locator(".qw-detail button", has_text="Entrar na arena").first.click()
+            time.sleep(2.0)
+            return "iniciada"
+        finally:
+            self.close_windows()
+
+    def warzone_running(self):
+        """True enquanto a Warzone roda na tela (o bot espera; ela sai sozinha e a Party volta pra cidade)."""
+        return bool(self.page.evaluate(WARZONE_RUNNING_JS))
 
     # ------------------------------------------------------------ login
     def login(self, username, password):
