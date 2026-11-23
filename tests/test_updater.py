@@ -77,6 +77,12 @@ class ApplyTests(unittest.TestCase):
     def test_zip_without_exe_is_rejected(self):
         self.assertFalse(updater.apply_update(self.make_zip(with_exe=False), lambda m: None, current_exe=os.path.join(self.tmp, "a.exe")))
 
+    def test_swap_script_relaunches_with_args_only_when_given(self):
+        bat = updater.build_swap_script(1, r"C:\a\D.exe", r"C:\t\n.exe", r"C:\t\l.txt", "T", relaunch_args="--iniciar")
+        self.assertIn('start "" "C:\\a\\D.exe" --iniciar', bat)
+        plain = updater.build_swap_script(1, r"C:\a\D.exe", r"C:\t\n.exe", r"C:\t\l.txt", "T")
+        self.assertIn('start "" "C:\\a\\D.exe"\n', plain)
+
     def test_swap_script_waits_for_pid_and_keeps_backup(self):
         bat = updater.build_swap_script(1234, r"C:\app\DrakoriaBot.exe", r"C:\tmp\new.exe", r"C:\tmp\log.txt", "Tarefa_1234")
         self.assertIn('tasklist /FI "PID eq 1234"', bat)

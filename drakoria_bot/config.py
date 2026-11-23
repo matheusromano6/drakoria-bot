@@ -77,6 +77,9 @@ DEFAULTS = {
     },
     # Builder (Escolher Hunt > Builder): ao iniciar a caca aplica no Helper as magias e curas que o jogo sugere pra cada personagem
     "builder": {"enabled": True},
+    # Atlas Celestial: a cada check_minutes confere os pontos livres de todos os personagens e aplica a build
+    # (Vocacao -> caminhos A/B/C/L1/L2). reserve_gold = ouro que nunca e' gasto nos pontos pagos.
+    "atlas": {"enabled": True, "check_minutes": 30, "reserve_gold": 5000000, "auto_apply": True},
     "user_idle_seconds": 60,              # janela do usuario aberta: o bot espera isso depois que ela fechar
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s

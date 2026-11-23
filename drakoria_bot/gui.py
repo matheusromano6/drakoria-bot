@@ -91,7 +91,7 @@ class App:
         root.after(100, self._poll_ui)
         root.after(1000, self._poll_state)
         root.after(300, self._poll_tray)
-        root.after(3000, self._startup_update_check)
+        root.after(3000, self._auto_update_loop)
 
     # ------------------------------------------------------------------ util
     def log(self, message):
@@ -305,6 +305,10 @@ class App:
         ctk.CTkCheckBox(grid, text="Builder: aplicar magias e curas da caça ao iniciar", variable=self.builder_var,
                         fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
                         command=lambda: self._set_builder(self.builder_var.get())).grid(row=10, column=0, columnspan=2, sticky="w", pady=6)
+        self.atlas_var = tk.BooleanVar(value=bool((self.cfg.get("atlas") or {}).get("enabled", True)))
+        ctk.CTkCheckBox(grid, text="Atlas Celestial: gastar pontos livres com a build de cada vocação", variable=self.atlas_var,
+                        fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
+                        command=lambda: self._set_atlas(self.atlas_var.get())).grid(row=11, column=0, columnspan=2, sticky="w", pady=6)
         self.relogin_var = tk.BooleanVar(value=bool(self.cfg["relogin"]))
         ctk.CTkCheckBox(grid, text="Relogin automático", variable=self.relogin_var, fg_color=ACCENT, hover_color=ACCENT_HOVER,
                         text_color=TEXT, command=lambda: self._set("relogin", self.relogin_var.get())
@@ -319,6 +323,10 @@ class App:
 
     def _set_builder(self, on):
         self.cfg.setdefault("builder", {})["enabled"] = bool(on)
+        self.save()
+
+    def _set_atlas(self, on):
+        self.cfg.setdefault("atlas", {})["enabled"] = bool(on)
         self.save()
 
     def _set(self, key, value):
@@ -1115,34 +1123,41 @@ class App:
         self._refresh_logins()
 
     # ------------------------------------------------------------- atualizar
-    def _startup_update_check(self):
-        def work():
-            info = updater.check_for_update(lambda m: None)
-            if info:
-                self.log(f"Nova versão disponível: v{info['version']} (você está na v{VERSION}). Clique em Atualizar.")
-        threading.Thread(target=work, daemon=True).start()
+    UPDATE_EVERY_MS = 30 * 60 * 1000
+
+    def _auto_update_loop(self):
+        """Consulta a versao ao abrir e a cada 30 min. Achou versao nova -> atualiza sozinho."""
+        self._check_update(manual=False)
+        self.root.after(self.UPDATE_EVERY_MS, self._auto_update_loop)
 
     def start_update(self):
+        """Botao Atualizar: mesma rotina automatica, mas avisa quando ja esta na ultima."""
         if self.updating:
             return
-        if self.runner.running:
-            self.log("Pare o bot antes de atualizar.")
-            return
         self.update_btn.configure(state="disabled", text="...")
+        self._check_update(manual=True)
+
+    def _check_update(self, manual):
+        if self.updating:
+            return
 
         def work():
-            info = updater.check_for_update(self.log)
-            self.call_ui(lambda: self._on_update_checked(info))
+            info = updater.check_for_update(self.log if manual else (lambda m: None))
+            self.call_ui(lambda: self._on_update_checked(info, manual))
         threading.Thread(target=work, daemon=True).start()
 
-    def _on_update_checked(self, info):
+    def _on_update_checked(self, info, manual=False):
         self.update_btn.configure(state="normal", text="Atualizar")
         if info is None:
-            self.log(f"Você já está na última versão (v{VERSION}).")
+            if manual:
+                self.log(f"Você já está na última versão (v{VERSION}).")
             return
         if not updater.is_frozen():
             self.log(f"Há uma versão nova (v{info['version']}), mas a atualização automática só funciona no DrakoriaBot.exe.")
             return
+        # bot rodando: reabre ja iniciando; parado: reabre so' a janela (quem inicia e' o usuario)
+        running = self.runner.running
+        self.log(f"Nova versão v{info['version']}: atualizando" + (" e reiniciando o bot" if running else "") + "...")
         self.updating = True
         overlay = ctk.CTkFrame(self.root, fg_color=BG)
         overlay.place(x=0, y=0, relwidth=1, relheight=1)
@@ -1153,7 +1168,8 @@ class App:
         bar.place(relx=0.5, rely=0.53, anchor="center")
 
         def work():
-            ok = updater.apply_update(info["asset_url"], self.log, lambda f: self.call_ui(lambda: bar.set(f)))
+            ok = updater.apply_update(info["asset_url"], self.log, lambda f: self.call_ui(lambda: bar.set(f)),
+                                      relaunch_args="--iniciar" if running else "")
             self.call_ui(lambda: self.root.after(1500, self.quit) if ok else (overlay.destroy(), setattr(self, "updating", False)))
         threading.Thread(target=work, daemon=True).start()
 

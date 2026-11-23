@@ -74,7 +74,7 @@ def download_zip(asset_url, log, progress=None):
     return zip_path
 
 
-def build_swap_script(pid, current_exe, new_exe, update_log, task_name):
+def build_swap_script(pid, current_exe, new_exe, update_log, task_name, relaunch_args=""):
     """.bat que espera ESTE processo fechar (nao da pra sobrescrever um .exe em uso), guarda o antigo como
     .bak, coloca o novo, reabre e apaga o .bak e a propria tarefa agendada. Registra tudo em update_log."""
     return (
@@ -90,14 +90,14 @@ def build_swap_script(pid, current_exe, new_exe, update_log, task_name):
         f'move /Y "{current_exe}" "{current_exe}.bak" >> "{update_log}" 2>&1\n'
         f'move /Y "{new_exe}" "{current_exe}" >> "{update_log}" 2>&1\n'
         f'echo %date% %time% reabrindo o bot >> "{update_log}"\n'
-        f'start "" "{current_exe}"\n'
+        f'start "" "{current_exe}"{(" " + relaunch_args) if relaunch_args else ""}\n'
         f'del "{current_exe}.bak"\n'
         f'schtasks /delete /tn "{task_name}" /f >NUL 2>&1\n'
         f'echo %date% %time% concluido >> "{update_log}"\n'
     )
 
 
-def apply_update(asset_url, log, progress=None, current_exe=None, pid=None):
+def apply_update(asset_url, log, progress=None, current_exe=None, pid=None, relaunch_args=""):
     """Baixa e agenda a troca. Quem chama precisa FECHAR o bot logo em seguida (libera o .exe pro .bat).
     O .bat roda por uma tarefa agendada de uso unico (schtasks): confirmado no bot do Baiak que um .bat
     'destacado' do processo nao e' confiavel (tasklist/find sem console). Retorna True se agendou."""
@@ -123,7 +123,7 @@ def apply_update(asset_url, log, progress=None, current_exe=None, pid=None):
     task_name = f"DrakoriaBotUpdate_{pid}"
     bat_path = os.path.join(tmp_dir, "apply_update.bat")
     with open(bat_path, "w", encoding="utf-8") as file:
-        file.write(build_swap_script(pid, current_exe, new_exe, update_log, task_name))
+        file.write(build_swap_script(pid, current_exe, new_exe, update_log, task_name, relaunch_args))
     try:
         subprocess.run(["schtasks", "/create", "/tn", task_name, "/tr", bat_path, "/sc", "once", "/st", "00:00",
                         "/sd", "01/01/2050", "/f"], creationflags=subprocess.CREATE_NO_WINDOW, check=True, capture_output=True)

@@ -274,6 +274,15 @@ class Engine:
                     self.last_ok["builder check"] = now
                     return
 
+        # 4c) atlas celestial: de tempos em tempos confere os pontos livres e aplica a build (1 conta: o jogo
+        # devolve os 4 personagens do grupo)
+        acfg = self.cfg.get("atlas") or {}
+        if acfg.get("enabled", True) and acc is self.accounts[0] and st.phase in ("hunting", "city", "house", "house_idle"):
+            every = acfg.get("check_minutes", 30) * 60
+            if now - self.last_ok.get("atlas check", -every) >= every and self._ready("atlas"):
+                if self._do("atlas", lambda: self._atlas(acc, acfg)) is not None:
+                    self.last_ok["atlas check"] = now
+
         # 5) imbuements (acima de tasks/bestiary): aplica o que acabou, compra/escolhe caça pros materiais
         imb = self.cfg.get("imbuing") or {}
         if imb.get("enabled", True) and (imb.get("targets") or not self.imb_seen) and st.phase in ("hunting", "city", "house", "house_idle"):
@@ -680,6 +689,17 @@ class Engine:
         self._bestiary = progress
         if self.memory:
             self.memory.set("bestiary", progress)
+
+    def _atlas(self, acc, acfg):
+        from . import atlas
+        reserve = int(acfg.get("reserve_gold", 5_000_000))
+        rows = acc.atlas(reserve, apply=False)              # simula primeiro
+        if not any(r.get("ok") for r in rows):
+            return                                          # nada pra gastar: silencio
+        if acfg.get("auto_apply", True):
+            rows = acc.atlas(reserve, apply=True)
+        for line in atlas.summary(rows):
+            self.log(f"Atlas: {line}")
 
     def _apply_builder(self, acc, target):
         from . import builder

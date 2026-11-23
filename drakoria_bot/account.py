@@ -455,6 +455,12 @@ class Account:
         if status != "ok":
             raise RuntimeError(status)
 
+    def atlas(self, reserve_gold, apply=False):
+        """Atlas Celestial de todos os personagens da conta, pelo motor do jogo (sem janela)."""
+        from . import atlas
+        self._game_hook()
+        return atlas.run(self.page, reserve_gold, apply)
+
     def read_imbuements(self, names):
         """Set, imbuements e materiais (mochila, depot) da party, sem janela. names = materiais em minusculas."""
         self._game_hook()
