@@ -83,8 +83,9 @@ DEFAULTS = {
     # gold que o bot NUNCA gasta nas compras automaticas (Atlas e arma de exercicio). Editavel na aba Regras.
     "gold_reserve": 5000000,
     # compra de arma de exercicio (Loja > Treinamento) 1x por dia por conta, na cidade antes do treino.
-    # per_vocation = quantas durable exercise comprar por vocacao (0 = nao compra)
-    "exercise": {"enabled": False, "per_vocation": {"knight": 0, "paladin": 0, "sorcerer": 0, "druid": 0}},
+    # target_stamina_h = stamina que o bot quer ao treinar (a compra e' o que falta, descontando a mochila);
+    # max_buy = maximo comprado de uma vez
+    "exercise": {"enabled": False, "target_stamina_h": 40, "max_buy": 10},
     "user_idle_seconds": 60,              # janela do usuario aberta: o bot espera isso depois que ela fechar
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s

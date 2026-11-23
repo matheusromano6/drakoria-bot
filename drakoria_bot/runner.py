@@ -73,9 +73,14 @@ class Runner:
             self.market = MarketWatcher(self.cfg["market"], MarketStore(os.path.join(ROOT, "market.db")), self.log,
                                         notify=lambda title, text: self.notify and self.notify(title, text))
             self.market.extra_items = self._task_items
-            self.engine = Engine(pool.refresh(), self.cfg, self.log, refresh=pool.refresh, market=self.market,
+            memory = Memory(os.path.join(ROOT, "memory.json"))
+            accounts = pool.refresh()
+            if accounts:
+                from . import housekeeping
+                housekeeping.check_build(accounts[0].page, memory, self.log)
+            self.engine = Engine(accounts, self.cfg, self.log, refresh=pool.refresh, market=self.market,
                                  credentials=Credentials(os.path.join(ROOT, "credentials.json")),
-                                 memory=Memory(os.path.join(ROOT, "memory.json")))
+                                 memory=memory)
             self.log("bot iniciado")
             self.engine.run(self.stop_event)
         except Exception as error:

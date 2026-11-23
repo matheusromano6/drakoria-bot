@@ -88,6 +88,8 @@ class App:
         if sys.platform == "win32":
             root.bind("<Unmap>", self._on_unmap)
         root.after(150, self._poll_log)
+        from . import housekeeping
+        housekeeping.prune_logs(os.path.join(ROOT, "logs"))
         root.after(100, self._poll_ui)
         root.after(1000, self._poll_state)
         root.after(300, self._poll_tray)
@@ -322,18 +324,15 @@ class App:
         ex = ctk.CTkFrame(grid, fg_color="transparent")
         ex.grid(row=13, column=0, columnspan=2, sticky="w", pady=4)
         self.exercise_var = tk.BooleanVar(value=bool((self.cfg.get("exercise") or {}).get("enabled", False)))
-        ctk.CTkCheckBox(ex, text="Comprar arma de exercício (durable) por vocação:", variable=self.exercise_var,
+        ctk.CTkCheckBox(ex, text="Comprar arma de exercício (durable) para treinar até a stamina alvo:", variable=self.exercise_var,
                         fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=TEXT,
                         command=lambda: self._set_exercise_enabled(self.exercise_var.get())).pack(side="left")
-        self.exercise_entries = {}
-        for voc, label in (("knight", "Knight"), ("paladin", "Paladin"), ("sorcerer", "Sorc"), ("druid", "Druid")):
-            ctk.CTkLabel(ex, text=label, text_color=TEXT).pack(side="left", padx=(10, 2))
-            entry = ctk.CTkEntry(ex, width=44)
-            entry.insert(0, str((self.cfg.get("exercise") or {}).get("per_vocation", {}).get(voc, 0)))
-            entry.pack(side="left")
-            entry.bind("<FocusOut>", lambda e, v=voc: self._save_exercise_qty(v))
-            entry.bind("<Return>", lambda e, v=voc: self._save_exercise_qty(v))
-            self.exercise_entries[voc] = entry
+        ctk.CTkLabel(ex, text="Stamina alvo (h):", text_color=TEXT).pack(side="left", padx=(10, 2))
+        self.exercise_target = ctk.CTkEntry(ex, width=50)
+        self.exercise_target.insert(0, str((self.cfg.get("exercise") or {}).get("target_stamina_h", 40)))
+        self.exercise_target.pack(side="left")
+        self.exercise_target.bind("<FocusOut>", lambda e: self._save_exercise_target())
+        self.exercise_target.bind("<Return>", lambda e: self._save_exercise_target())
         self.relogin_var = tk.BooleanVar(value=bool(self.cfg["relogin"]))
         ctk.CTkCheckBox(grid, text="Relogin automático", variable=self.relogin_var, fg_color=ACCENT, hover_color=ACCENT_HOVER,
                         text_color=TEXT, command=lambda: self._set("relogin", self.relogin_var.get())
@@ -367,14 +366,14 @@ class App:
         self.cfg.setdefault("exercise", {})["enabled"] = bool(on)
         self.save()
 
-    def _save_exercise_qty(self, voc):
+    def _save_exercise_target(self):
         try:
-            qty = max(0, min(100, int(self.exercise_entries[voc].get() or 0)))
+            hours = max(0, min(42, int(float(self.exercise_target.get().replace(",", ".")))))
         except ValueError:
-            qty = 0
-        self.cfg.setdefault("exercise", {}).setdefault("per_vocation", {})[voc] = qty
-        self.exercise_entries[voc].delete(0, "end")
-        self.exercise_entries[voc].insert(0, str(qty))
+            hours = 40
+        self.cfg.setdefault("exercise", {})["target_stamina_h"] = hours
+        self.exercise_target.delete(0, "end")
+        self.exercise_target.insert(0, str(hours))
         self.save()
 
     def _set(self, key, value):
@@ -1308,7 +1307,11 @@ class App:
         self.root.after(300, self._poll_tray)
 
     def quit(self):
+        # fechamento seguro: pede para o motor parar e espera a acao atual terminar (ate 15 s)
         self.runner.stop()
+        thread = getattr(self.runner, "thread", None)
+        if thread is not None and thread.is_alive():
+            thread.join(15)
         self._stop_tray()
         self.root.destroy()
 

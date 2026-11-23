@@ -4,6 +4,7 @@ Prioridade: erro/queda -> login -> avisos -> loot (protecao de boss / venda) -> 
 
 Destino (usuario 20/10/2026): stamina abaixo de 'train_below_hours' (14h: a XP cai pela metade) -> treinar ate
 'resume_hours'; senao objetivo (task ativa / bestiary) -> caça padrao da aba Regras -> treinar. Nunca parado."""
+import os
 import time
 
 import datetime
@@ -43,6 +44,10 @@ class Engine:
         self.user_busy_until = 0        # janela do usuario aberta: nada de mexer na tela ate esse horario
         self.hunts_checked = False      # catalogo de caças relido do jogo 1x por inicio do bot
         self.prey_spent = {}            # ouro gasto trocando lista da Prey hoje (sem memory.json)
+        if memory and memory.get("last_state"):
+            s = memory.get("last_state")
+            self.log(f"retomando do ponto salvo: {s.get('phase')}, caça {s.get('hunt') or '-'}, "
+                     f"objetivo: {s.get('goal') or '-'}")
         self.timings = {}               # desempenho: tempos das etapas (resumo no log a cada 10 min)
         self.timing_report_at = self.clock()
         try:
@@ -123,9 +128,18 @@ class Engine:
         if st.stamina is None or not cfg.get("enabled", True):
             return self.resting
         below, resume = cfg.get("train_below_hours", 14), cfg.get("resume_hours", 24)
+        ecfg = self.cfg.get("exercise") or {}
+        if ecfg.get("enabled"):
+            # com arma de exercicio o descanso vai ate a stamina alvo (ideal), nao so' ate resume_hours
+            resume = max(resume, ecfg.get("target_stamina_h", resume))
+        if self.resting and self.memory:
+            # objetivo salvo no inicio do treino (sobrevive a queda do bot e a atualizacao forcada)
+            resume = self.memory.get("stamina_goal", resume)
         if not self.resting and st.stamina < below:
             self.resting = True
             self.log(f"stamina {st.stamina:.1f}h (abaixo de {below}h): indo treinar ate {resume}h")
+            if self.memory:
+                self.memory.set("stamina_goal", resume)
         elif self.resting and st.stamina >= resume:
             self.resting = False
             self.log(f"stamina recuperada ({st.stamina:.1f}h): voltando a caçar")
@@ -211,6 +225,7 @@ class Engine:
             if self.phase_since[0] is not None:
                 self.log(f"estado: {self.phase_since[0]} -> {st.phase}")
             self.phase_since = (st.phase, now)
+            self._save_state(st)
         current = H.identify(st.tracker, self.hunts) if st.phase == "hunting" else None
         if st.phase != "hunting":
             self.hunt_known = None
@@ -269,7 +284,7 @@ class Engine:
         if now < self.boss_until:
             self._boss_hold(acc, now)
             return
-        if acc is self.accounts[0] and st.phase in ("hunting", "city") and self._boss_due(now):
+        if acc is self.accounts[0] and st.phase in ("hunting", "city", "house", "house_idle") and self._boss_due(now):
             self._auto_boss(acc, now)
             return
 
@@ -716,7 +731,9 @@ class Engine:
             self.memory.set("bestiary", progress)
 
     def _exercise(self, acc, st):
-        """Compra 1x por dia, por conta, a arma de exercicio da vocacao (quantidade da aba Regras)."""
+        """1x por dia, por conta, na cidade antes do treino: calcula quantas durables faltam para a stamina alvo
+        (descontando a mochila) e compra. O calculo aparece no log mesmo quando nao precisa comprar."""
+        from . import exercise as X
         ecfg = self.cfg.get("exercise") or {}
         if not ecfg.get("enabled") or self.memory is None:
             return
@@ -725,18 +742,44 @@ class Engine:
         key = st.name or "conta"
         if done.get(key) == today:
             return
-        result = self._do("exercicio", lambda: acc.buy_exercise(ecfg.get("per_vocation") or {},
-                                                                int(self.cfg.get("gold_reserve", 5_000_000))))
-        if result is None:
+        info = self._do("exercicio", acc.exercise_read)
+        if not isinstance(info, dict):
             return                                  # erro (ja logado pelo _do): tenta de novo depois
+        if info.get("error") or not info.get("weapon"):
+            done[key] = today
+            self.memory.set("exercise", done)
+            self.log(f"Exercise {key}: sem arma de exercício para esta vocação ({info.get('error') or info.get('vocation')})")
+            return
+        target = float(ecfg.get("target_stamina_h", 40))
+        p = X.plan(info.get("stamina_h"), target, info.get("owned", 0), ecfg.get("max_buy", 10))
         done[key] = today
         self.memory.set("exercise", done)
-        if not isinstance(result, dict) or result.get("skip"):
+        if not p["ok"]:
+            self.log(f"Exercise {key}: {p['msg']}")
             return
-        if result.get("ok"):
-            self.log(f"Exercise {key}: {result.get('qty')}x {result.get('item')} comprada(s) por {result.get('cost')} gold")
-        else:
+        stamina = info.get("stamina_h") or 0.0
+        self.log(f"Exercise {key} ({info['vocation']}): stamina {stamina:.1f}h -> alvo {target:.0f}h; "
+                 f"faltam {p['hours']:.1f}h de treino = {p['durables_needed']} durable(s), {p['owned']} na mochila")
+        if p["buy"] <= 0 or not info.get("price"):
+            return
+        result = self._do("exercicio compra", lambda: acc.buy_exercise(info["weapon"], p["buy"],
+                                                                       int(self.cfg.get("gold_reserve", 5_000_000))))
+        if isinstance(result, dict) and result.get("ok"):
+            self.log(f"Exercise {key}: comprou {result.get('qty')}x {result.get('item')} por {result.get('cost')} gold")
+            self._spend("arma de exercício", result.get("cost", 0), f"{key}: {result.get('qty')}x {result.get('item')}")
+        elif isinstance(result, dict):
             self.log(f"Exercise {key}: nao comprou ({result.get('msg')})")
+
+    def _spend(self, kind, gold, detail):
+        from . import housekeeping, paths
+        housekeeping.spend(os.path.join(paths.app_dir(), "logs"), kind, gold, detail)
+
+    def _save_state(self, st):
+        """Guarda o ponto atual (fase, caca, objetivo) pra retomar igual depois de queda ou atualizacao."""
+        if not self.memory:
+            return
+        self.memory.set("last_state", {"phase": st.phase, "hunt": self.hunt_known or "", "goal": self.snapshot.get("goal", ""),
+                                       "resting": bool(self.resting)})
 
     def _atlas(self, acc, acfg):
         from . import atlas
@@ -746,6 +789,9 @@ class Engine:
             return                                          # nada pra gastar: silencio
         if acfg.get("auto_apply", True):
             rows = acc.atlas(reserve, apply=True)
+            for r in rows:
+                if r.get("applied"):
+                    self._spend("atlas", r.get("gold") or 0, f"{r.get('name')}: {r.get('soul')} pontos")
         for line in atlas.summary(rows):
             self.log(f"Atlas: {line}")
 

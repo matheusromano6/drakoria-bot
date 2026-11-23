@@ -455,11 +455,17 @@ class Account:
         if status != "ok":
             raise RuntimeError(status)
 
-    def buy_exercise(self, quotas, reserve_gold, check=False):
-        """Compra a arma de exercicio da vocacao deste personagem na Loja da Cidade (pelo motor do jogo)."""
+    def exercise_read(self):
+        """Vocacao, stamina, durables na mochila e preco da arma de exercicio (sem comprar)."""
+        from .exercise import READ_JS, SHOP
+        self._game_hook()
+        return self.page.evaluate(READ_JS, SHOP)
+
+    def buy_exercise(self, weapon, qty, reserve_gold):
+        """Compra 'qty' durables da arma da vocacao deste personagem (Loja da Cidade, motor do jogo)."""
         from .exercise import BUY_JS, SHOP
         self._game_hook()
-        return self.page.evaluate(BUY_JS, [SHOP, quotas, int(reserve_gold), bool(check)])
+        return self.page.evaluate(BUY_JS, [SHOP, weapon, int(qty), int(reserve_gold)])
 
     def atlas(self, reserve_gold, apply=False):
         """Atlas Celestial de todos os personagens da conta, pelo motor do jogo (sem janela)."""
