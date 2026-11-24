@@ -454,6 +454,13 @@ class Engine:
         if st.phase == "hunting":
             if self._do("sair da caça", acc.leave_hunt):
                 self.log(f"saindo da caça pra treinar ({self.snapshot.get('goal')})")
+        elif st.phase in ("house", "house_idle") and self._exercise_pending(st):
+            # ja esta treinando (ou parada na house) sem ter comprado a arma de hoje: sai pra cidade (a compra e' na cidade)
+            if st.phase == "house":
+                if self._do("parar treino", acc.stop_training):
+                    self.log(f"{st.name or 'conta'}: parando o treino pra comprar a arma de exercício")
+            elif self._do("sair da house", acc.leave_house):
+                self.log(f"{st.name or 'conta'}: saiu da house pra comprar a arma de exercício")
         elif st.phase in ("city", "house_idle"):
             if st.phase == "city":                  # compra so' na cidade (item 7)
                 self._exercise(acc, st)
@@ -847,6 +854,14 @@ class Engine:
         self._bestiary = progress
         if self.memory:
             self.memory.set("bestiary", progress)
+
+    def _exercise_pending(self, st):
+        """Arma de exercicio ligada e ainda nao checada hoje para esta conta (o bot precisa passar pela cidade)."""
+        ecfg = self.cfg.get("exercise") or {}
+        if not ecfg.get("enabled") or self.memory is None:
+            return False
+        done = self.memory.get("exercise") or {}
+        return done.get(st.name or "conta") != datetime.date.today().isoformat() and self._ready("exercicio")
 
     def _exercise(self, acc, st):
         """1x por dia, por conta, na cidade antes do treino: calcula quantas durables faltam para a stamina alvo
