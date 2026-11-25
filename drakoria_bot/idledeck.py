@@ -34,6 +34,7 @@ class Pool:
         self._accounts = {}      # id(page) -> Account
         self._warned_empty = False
         self._empty_since = None
+        self._down_logged = False
 
     def open(self, launch=True, stop=None):
         """Conecta. Se o IdleDeck nao esta com a porta, ABRE ele (launch=True) - ver launcher.py."""
@@ -73,7 +74,10 @@ class Pool:
         target = best[0]["url"] if best else self.cdp_url
         self.log(f"reconectando: navegador com o Drakoria em {target.rsplit(':', 1)[-1]}"
                  + ("" if best else " (nenhum achado; tentando a porta configurada)"))
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            pass                        # navegador ja morto: nada a fechar
         self.cdp_url = target
         self._accounts = {}
         try:
@@ -81,9 +85,33 @@ class Pool:
         except Exception as error:
             self.log(f"reconexao falhou: {error}")
 
+    def _alive(self):
+        try:
+            return self.browser is not None and self.browser.is_connected()
+        except Exception:
+            return False
+
     def refresh(self):
         """Reencontra as paginas do Drakoria (conta aberta/fechada depois do inicio)."""
-        pages = [p for c in self.browser.contexts for p in c.pages if GAME_HOST in p.url]
+        if not self._alive():
+            # o navegador fechou ou foi reiniciado (o Opera reinicia sozinho por memoria): reconecta na hora assim que a
+            # porta de depuracao voltar, sem esperar o tempo de 'sem conta'. Enquanto a porta estiver fechada, so' espera.
+            if not port_open(self.cdp_url):
+                if not self._down_logged:
+                    self.log("navegador do jogo fechou (Opera reiniciando?): aguardando ele voltar...")
+                    self._down_logged = True
+                return []
+            self._down_logged = False
+            self._empty_since = None
+            self._reconnect()
+            if not self._alive():
+                return []
+        try:
+            pages = [p for c in self.browser.contexts for p in c.pages if GAME_HOST in p.url]
+        except Exception as error:
+            self.log(f"navegador do jogo nao respondeu ({error}): reconectando")
+            self._reconnect()
+            return []
         known = {}
         for page in pages:
             acc = self._accounts.get(id(page)) or Account(page, self.log)

@@ -391,6 +391,11 @@ class Engine:
                 self._prey(acc, st, current)
                 return
 
+        # 7b) arma de exercicio: 1x por dia por conta, na cidade OU durante o treino/house, ANTES de escolher o destino
+        #     (senao a conta que vai caçar nunca compra). Nao depende da caça nem para o treino.
+        if st.phase in ("city", "house", "house_idle") and self._exercise_pending(st):
+            self._exercise(acc, st)
+
         # 8) destino: sempre caça ou treino (usuario 20/10: sem modo 'so vigiar')
         target = self.target_hunt(acc, st)
         self.snapshot["target"] = target or "treino"
@@ -454,12 +459,8 @@ class Engine:
         if st.phase == "hunting":
             if self._do("sair da caça", acc.leave_hunt):
                 self.log(f"saindo da caça pra treinar ({self.snapshot.get('goal')})")
-        elif st.phase in ("city", "house", "house_idle"):
-            # a compra da arma de exercicio nao depende do lugar (loja do motor do jogo): feita na cidade OU durante o treino,
-            # sem parar o treino nem sair da house
-            if self._exercise_pending(st):
-                self._exercise(acc, st)
-            if st.phase in ("city", "house_idle") and self._do("treinar", acc.start_training):
+        elif st.phase in ("city", "house_idle"):
+            if self._do("treinar", acc.start_training):
                 self.log(f"treinando ({self.snapshot.get('goal')})")
 
     def _settled(self, st, current):
@@ -855,8 +856,14 @@ class Engine:
         ecfg = self.cfg.get("exercise") or {}
         if not ecfg.get("enabled") or self.memory is None:
             return False
+        key = st.name or "conta"
         done = self.memory.get("exercise") or {}
-        return done.get(st.name or "conta") != datetime.date.today().isoformat() and self._ready("exercicio")
+        if done.get(key) != datetime.date.today().isoformat():
+            return self._ready("exercicio")                  # 1a checagem do dia
+        # ja checou hoje: confere de novo a cada 'recheck_minutes' (a stamina cai durante o treino/caça)
+        last = (self.memory.get("exercise_at") or {}).get(key, 0)
+        every = float(ecfg.get("recheck_minutes", 120)) * 60
+        return datetime.datetime.now().timestamp() - last >= every and self._ready("exercicio")
 
     def _exercise(self, acc, st):
         """1x por dia, por conta, na cidade antes do treino. A stamina e' da conta; cada personagem da formacao gasta a
@@ -869,8 +876,6 @@ class Engine:
         today = datetime.date.today().isoformat()
         done = dict(self.memory.get("exercise") or {})
         key = st.name or "conta"
-        if done.get(key) == today:
-            return
         info = self._do("exercicio", acc.exercise_read)
         if not isinstance(info, dict):
             return                                  # erro (ja logado pelo _do): tenta de novo depois
@@ -878,12 +883,18 @@ class Engine:
         if info.get("error") or not weapons:
             done[key] = today
             self.memory.set("exercise", done)
+            at = dict(self.memory.get("exercise_at") or {})
+            at[key] = datetime.datetime.now().timestamp()
+            self.memory.set("exercise_at", at)
             self.log(f"Exercise {key}: sem arma de exercício para a formação ({info.get('error') or info.get('vocations')})")
             return
         target = float(ecfg.get("target_stamina_h", 40))
         stamina = info.get("stamina_h")
         done[key] = today
         self.memory.set("exercise", done)
+        at = dict(self.memory.get("exercise_at") or {})
+        at[key] = datetime.datetime.now().timestamp()
+        self.memory.set("exercise_at", at)
         self._row(acc, st).update({"stamina": stamina})
         plans = []
         for weapon, data in sorted(weapons.items()):

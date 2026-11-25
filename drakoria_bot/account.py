@@ -522,8 +522,18 @@ class Account:
             texts = self.page.evaluate("() => [...document.querySelectorAll('.pf-card.in .pf-copy small')].map(e => e.textContent.trim())")
         finally:
             if not was_open:
-                self.page.evaluate("() => { const b = [...document.querySelectorAll('.pf-panel button')].find(x => (x.getAttribute('aria-label') || '') === 'Fechar formação da Party'); if (b) b.click(); }")
+                self._close_formation()
         return [k for k in (vocation_key(t) for t in texts) if k]
+
+    def _close_formation(self):
+        """Fecha a janela de formacao sem salvar nada. O 'x' (aria 'Fechar formação da Party') fica no cabecalho da janela,
+        FORA de .pf-panel (por isso a versao antiga nunca fechava). Se nao fechar, Escape."""
+        def closed():
+            return self.page.locator(".pf-panel").count() == 0 or not self.page.locator(".pf-panel").first.is_visible()
+        self.page.evaluate("() => { const b = document.querySelector('button[aria-label=\"Fechar formação da Party\"]'); if (b) b.click(); }")
+        if not self._wait(closed, 3):
+            self.page.keyboard.press("Escape")
+            self._wait(closed, 2)
 
     def exercise_read(self):
         """Formacao (vocacoes ativas), stamina da conta, e por arma: preco na loja e durables na mochila (sem comprar)."""

@@ -88,7 +88,7 @@ DEFAULTS = {
     # compra de arma de exercicio (Loja > Treinamento) 1x por dia por conta, na cidade antes do treino.
     # target_stamina_h = stamina que o bot quer ao treinar (a compra e' o que falta, descontando a mochila);
     # max_buy = maximo comprado de uma vez
-    "exercise": {"enabled": False, "target_stamina_h": 40, "max_buy": 10, "simulate": False},
+    "exercise": {"enabled": False, "target_stamina_h": 40, "max_buy": 10, "simulate": False, "recheck_minutes": 120},
     "user_idle_seconds": 60,              # janela do usuario aberta: o bot espera isso depois que ela fechar
     "relogin": True,                      # entra sozinho com o login salvo (aba Login) se o jogo deslogar
     "error_reload_seconds": 60,           # pagina de erro/desconectado: recarrega a cada N s
