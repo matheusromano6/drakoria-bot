@@ -507,11 +507,35 @@ class Account:
         if status != "ok":
             raise RuntimeError(status)
 
+    def read_formation(self):
+        """Vocacoes (chaves de exercise.WEAPON) dos personagens na formacao da Party. Abre 'Configurar formação' e fecha
+        sem mudar nada (se a janela ja estava aberta, deixa como estava)."""
+        from .exercise import vocation_key
+        was_open = self.page.locator(".pf-panel").first.is_visible() if self.page.locator(".pf-panel").count() else False
+        if not was_open:
+            if not self.page.evaluate("() => { const b = document.querySelector('button.td-config'); if (!b) return false; b.click(); return true; }"):
+                raise RuntimeError("botao 'Configurar formação' nao achado")
+            if not self._wait(lambda: self.page.locator(".pf-panel").first.is_visible(), 5):
+                raise RuntimeError("janela de formação nao abriu")
+            time.sleep(0.3)
+        try:
+            texts = self.page.evaluate("() => [...document.querySelectorAll('.pf-card.in .pf-copy small')].map(e => e.textContent.trim())")
+        finally:
+            if not was_open:
+                self.page.evaluate("() => { const b = [...document.querySelectorAll('.pf-panel button')].find(x => (x.getAttribute('aria-label') || '') === 'Fechar formação da Party'); if (b) b.click(); }")
+        return [k for k in (vocation_key(t) for t in texts) if k]
+
     def exercise_read(self):
-        """Vocacao, stamina, durables na mochila e preco da arma de exercicio (sem comprar)."""
-        from .exercise import READ_JS, SHOP
+        """Formacao (vocacoes ativas), stamina da conta, e por arma: preco na loja e durables na mochila (sem comprar)."""
+        from .exercise import READ_JS, SHOP, WEAPON
         self._game_hook()
-        return self.page.evaluate(READ_JS, SHOP)
+        vocations = self.read_formation()
+        weapons = sorted({WEAPON[k] for k in vocations})
+        if not weapons:
+            return {"error": "nenhum personagem com arma de exercicio na formacao", "vocations": vocations}
+        info = self.page.evaluate(READ_JS, [SHOP, weapons])
+        info["vocations"] = vocations
+        return info
 
     def buy_exercise(self, weapon, qty, reserve_gold):
         """Compra 'qty' durables da arma da vocacao deste personagem (Loja da Cidade, motor do jogo)."""

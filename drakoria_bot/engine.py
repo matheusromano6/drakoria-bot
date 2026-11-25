@@ -864,8 +864,9 @@ class Engine:
         return done.get(st.name or "conta") != datetime.date.today().isoformat() and self._ready("exercicio")
 
     def _exercise(self, acc, st):
-        """1x por dia, por conta, na cidade antes do treino: calcula quantas durables faltam para a stamina alvo
-        (descontando a mochila) e compra (ou so' simula). O calculo aparece no log mesmo quando nao precisa comprar."""
+        """1x por dia, por conta, na cidade antes do treino. A stamina e' da conta; cada personagem da formacao gasta a
+        arma da sua vocacao. Para cada arma: calcula quantas durables faltam (descontando a mochila) e compra (ou so'
+        simula). O calculo aparece no log mesmo quando nao precisa comprar."""
         from . import exercise as X
         ecfg = self.cfg.get("exercise") or {}
         if not ecfg.get("enabled") or self.memory is None:
@@ -878,41 +879,46 @@ class Engine:
         info = self._do("exercicio", acc.exercise_read)
         if not isinstance(info, dict):
             return                                  # erro (ja logado pelo _do): tenta de novo depois
-        if info.get("error") or not info.get("weapon"):
+        weapons = info.get("weapons") or {}
+        if info.get("error") or not weapons:
             done[key] = today
             self.memory.set("exercise", done)
-            self.log(f"Exercise {key}: sem arma de exercício para esta vocação ({info.get('error') or info.get('vocation')})")
+            self.log(f"Exercise {key}: sem arma de exercício para a formação ({info.get('error') or info.get('vocations')})")
             return
         target = float(ecfg.get("target_stamina_h", 40))
-        p = X.plan(info.get("stamina_h"), target, info.get("owned", 0), ecfg.get("max_buy", 10))
+        stamina = info.get("stamina_h")
         done[key] = today
         self.memory.set("exercise", done)
-        self._row(acc, st).update({"stamina": info.get("stamina_h"), "durables": info.get("owned", 0)})
-        if not p["ok"]:
-            self.log(f"Exercise {key}: {p['msg']}")
-            return
-        stamina = info.get("stamina_h") or 0.0
-        self.log(f"Exercise {key} ({info['vocation']}): stamina {stamina:.1f}h -> alvo {target:.0f}h; "
-                 f"faltam {p['hours']:.1f}h de treino = {p['durables_needed']} durable(s), {p['owned']} na mochila")
-        if p["buy"] <= 0 or not info.get("price"):
-            return
-        if ecfg.get("simulate"):
-            self.log(f"Exercise {key}: SIMULAÇÃO, compraria {p['buy']}x ({p['buy'] * info['price']} gold). Nada foi comprado.")
-            return
+        self._row(acc, st).update({"stamina": stamina})
+        plans = []
+        for weapon, data in sorted(weapons.items()):
+            p = X.plan(stamina, target, data.get("owned", 0), ecfg.get("max_buy", 10))
+            if not p["ok"]:
+                self.log(f"Exercise {key}: {p['msg']}")
+                return
+            self.log(f"Exercise {key} ({weapon}): stamina {stamina:.1f}h -> alvo {target:.0f}h; faltam {p['hours']:.1f}h de treino = "
+                     f"{p['durables_needed']} durable(s), {p['owned']} na mochila")
+            plans.append((weapon, p, data.get("price")))
         reserve = int(self.cfg.get("gold_reserve", 5_000_000))
-        result = self._do("exercicio compra", lambda: acc.buy_exercise(info["weapon"], p["buy"], reserve))
-        if not isinstance(result, dict):
-            return
-        if result.get("ok"):
-            before, after = result.get("gold_before"), result.get("gold_after")
-            if before is not None and after is not None and before - after != result.get("cost", 0):
-                self.log(f"Exercise {key}: ATENÇÃO, o gold não bate (antes {before}, depois {after}, custo {result.get('cost')})")
-            self.log(f"Exercise {key}: comprou {result.get('qty')}x {result.get('item')} por {result.get('cost')} gold")
-            self._spend("arma de exercício", result.get("cost", 0), f"{key}: {result.get('qty')}x {result.get('item')}")
-        else:
-            self.log(f"Exercise {key}: nao comprou ({result.get('msg')})")
-            if "reserva" in str(result.get("msg", "")) or "gold" in str(result.get("msg", "")):
-                self._alert(f"Sem gold para repor a stamina de {key} (arma de exercício)")
+        for weapon, p, price in plans:
+            if p["buy"] <= 0 or not price:
+                continue
+            if ecfg.get("simulate"):
+                self.log(f"Exercise {key} ({weapon}): SIMULAÇÃO, compraria {p['buy']}x ({p['buy'] * price} gold). Nada foi comprado.")
+                continue
+            result = self._do("exercicio compra", lambda w=weapon, q=p["buy"]: acc.buy_exercise(w, q, reserve))
+            if not isinstance(result, dict):
+                continue
+            if result.get("ok"):
+                before, after = result.get("gold_before"), result.get("gold_after")
+                if before is not None and after is not None and before - after != result.get("cost", 0):
+                    self.log(f"Exercise {key}: ATENÇÃO, o gold não bate (antes {before}, depois {after}, custo {result.get('cost')})")
+                self.log(f"Exercise {key}: comprou {result.get('qty')}x {result.get('item')} por {result.get('cost')} gold")
+                self._spend("arma de exercício", result.get("cost", 0), f"{key}: {result.get('qty')}x {result.get('item')}")
+            else:
+                self.log(f"Exercise {key} ({weapon}): nao comprou ({result.get('msg')})")
+                if "reserva" in str(result.get("msg", "")) or "gold" in str(result.get("msg", "")):
+                    self._alert(f"Sem gold para repor a stamina de {key} (arma de exercício)")
 
     def _alert(self, text):
         """Aviso na bandeja (quando a janela esta escondida) + log."""

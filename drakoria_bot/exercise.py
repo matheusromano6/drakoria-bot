@@ -15,6 +15,15 @@ CHARGES_PER_SECOND = 0.5       # cargas gastas por segundo de treino (medido)
 CHARGES_PER_DURABLE = 1800
 
 
+def vocation_key(text):
+    """'Elite Knight · Lv 972' -> 'knight' (Monk e outras sem arma mapeada -> None)."""
+    t = (text or "").casefold()
+    for key in WEAPON:
+        if key in t:
+            return key
+    return None
+
+
 def plan(stamina_h, target_h, owned, max_buy=10):
     """Quantas durables comprar para ir da stamina atual ate target_h, descontando as que ja estao na mochila.
     Devolve horas de treino, cargas necessarias e a compra (limitada a max_buy)."""
@@ -28,29 +37,30 @@ def plan(stamina_h, target_h, owned, max_buy=10):
             "durables_needed": needed, "buy": min(needed, int(max_buy))}
 
 
-# le vocacao, stamina (HUD), durables na mochila e o preco na loja. Nao compra nada.
-READ_JS = r"""(shopId) => {
+# le stamina (HUD, compartilhada pela conta), ouro e, para cada arma pedida, preco na loja e durables na mochila
+# (mochila e loja sao da conta: o que um personagem compra serve pra todos). Nao compra nada.
+# args: [shopId, [armas]]
+READ_JS = r"""([shopId, weapons]) => {
   const g = window.__drkMarket && window.__drkMarket.game;
   if (!g || !g.char) return {error: 'motor do jogo indisponivel'};
-  const voc = String(g.char.vocationName || '');
-  const key = /knight/i.test(voc) ? 'knight' : /paladin/i.test(voc) ? 'paladin'
-    : /sorcerer/i.test(voc) ? 'sorcerer' : /druid/i.test(voc) ? 'druid' : null;
-  const weapon = key ? ({knight: 'sword', paladin: 'bow', sorcerer: 'wand', druid: 'rod'})[key] : null;
   const shop = g.cityShop(shopId);
-  const row = weapon && shop && (shop.items || []).find(i => i.item && i.item.name === 'durable exercise ' + weapon);
   const meter = [...document.querySelectorAll('.resource-meter')].map(e => (e.innerText || '').replace(/\s+/g, ' ').trim())
     .find(t => /^Stamina \d/.test(t)) || '';
   const m = meter.match(/(\d+):(\d\d):(\d\d)/);
   const stamina_h = m ? Number(m[1]) + Number(m[2]) / 60 : null;
-  let owned = 0;
-  if (weapon) document.querySelectorAll('.compact-storage-tile[aria-label]').forEach(e => {
-    const label = e.getAttribute('aria-label') || '';
-    if (label.toLowerCase().startsWith('durable exercise ' + weapon + '.')) {
-      const q = label.match(/Quantidade (\d+)/); if (q) owned += Number(q[1]);
-    }
-  });
-  return {vocation: voc, key, weapon, price: row ? Number(row.price) : null, gold: Number(g.char.gold || 0),
-          stamina_h, owned};
+  const labels = [...document.querySelectorAll('.compact-storage-tile[aria-label]')].map(e => e.getAttribute('aria-label') || '');
+  const out = {};
+  for (const weapon of (weapons || [])) {
+    const row = shop && (shop.items || []).find(i => i.item && i.item.name === 'durable exercise ' + weapon);
+    let owned = 0;
+    labels.forEach(label => {
+      if (label.toLowerCase().startsWith('durable exercise ' + weapon + '.')) {
+        const q = label.match(/Quantidade (\d+)/); if (q) owned += Number(q[1]);
+      }
+    });
+    out[weapon] = {price: row ? Number(row.price) : null, owned};
+  }
+  return {gold: Number(g.char.gold || 0), stamina_h, weapons: out};
 }"""
 
 # compra 'qty' durables do personagem da conta (pelo motor do jogo), sem deixar o gold abaixo da reserva.
