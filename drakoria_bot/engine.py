@@ -454,17 +454,12 @@ class Engine:
         if st.phase == "hunting":
             if self._do("sair da caça", acc.leave_hunt):
                 self.log(f"saindo da caça pra treinar ({self.snapshot.get('goal')})")
-        elif st.phase in ("house", "house_idle") and self._exercise_pending(st):
-            # ja esta treinando (ou parada na house) sem ter comprado a arma de hoje: sai pra cidade (a compra e' na cidade)
-            if st.phase == "house":
-                if self._do("parar treino", acc.stop_training):
-                    self.log(f"{st.name or 'conta'}: parando o treino pra comprar a arma de exercício")
-            elif self._do("sair da house", acc.leave_house):
-                self.log(f"{st.name or 'conta'}: saiu da house pra comprar a arma de exercício")
-        elif st.phase in ("city", "house_idle"):
-            if st.phase == "city":                  # compra so' na cidade (item 7)
+        elif st.phase in ("city", "house", "house_idle"):
+            # a compra da arma de exercicio nao depende do lugar (loja do motor do jogo): feita na cidade OU durante o treino,
+            # sem parar o treino nem sair da house
+            if self._exercise_pending(st):
                 self._exercise(acc, st)
-            if self._do("treinar", acc.start_training):
+            if st.phase in ("city", "house_idle") and self._do("treinar", acc.start_training):
                 self.log(f"treinando ({self.snapshot.get('goal')})")
 
     def _settled(self, st, current):
